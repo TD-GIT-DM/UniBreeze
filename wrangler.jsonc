@@ -1,0 +1,38 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "unibreeze",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-06-27",
+  "compatibility_flags": ["nodejs_compat"],
+
+  // Front-end: static assets served from ./public.
+  // The ASSETS binding lets the Worker serve them (env.ASSETS.fetch).
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS"
+  },
+
+  // D1 (SQL database). On first import, Cloudflare can auto-create this
+  // resource because no "database_id" is set. If you create it manually
+  // (wrangler d1 create unibreeze-db), paste the returned id below.
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "unibreeze-db"
+      // "database_id": "<paste-after-creating>"
+    }
+  ],
+
+  // R2 (object storage). Auto-created on import when no bucket exists,
+  // or create manually: wrangler r2 bucket create unibreeze-storage
+  "r2_buckets": [
+    {
+      "binding": "BUCKET",
+      "bucket_name": "unibreeze-storage"
+    }
+  ],
+
+  "observability": {
+    "enabled": true
+  }
+}

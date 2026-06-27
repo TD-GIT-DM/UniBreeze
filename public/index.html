@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>UniBreeze</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body { font-family: system-ui, sans-serif; max-width: 40rem; margin: 4rem auto; padding: 0 1rem; line-height: 1.5; }
+    h1 { margin-bottom: 0.25rem; }
+    .muted { color: #888; }
+    button { padding: 0.5rem 1rem; font-size: 1rem; cursor: pointer; }
+    input { padding: 0.5rem; font-size: 1rem; }
+    pre { background: rgba(127,127,127,0.12); padding: 1rem; border-radius: 8px; overflow:auto; }
+  </style>
+</head>
+<body>
+  <h1>UniBreeze 🌬️</h1>
+  <p class="muted">Full-stack Cloudflare Worker — Workers + D1 + R2.</p>
+
+  <h2>Add an item (D1)</h2>
+  <input id="name" placeholder="item name" />
+  <button id="add">Add</button>
+  <button id="refresh">Refresh list</button>
+  <pre id="out">Loading…</pre>
+
+  <script>
+    const out = document.getElementById('out');
+    async function load() {
+      const r = await fetch('/api/items');
+      out.textContent = JSON.stringify(await r.json(), null, 2);
+    }
+    document.getElementById('add').onclick = async () => {
+      const name = document.getElementById('name').value.trim();
+      if (!name) return;
+      await fetch('/api/items', { method: 'POST', headers: {'content-type':'application/json'}, body: JSON.stringify({ name }) });
+      document.getElementById('name').value = '';
+      load();
+    };
+    document.getElementById('refresh').onclick = load;
+    load().catch(e => out.textContent = String(e));
+  </script>
+</body>
+</html>
