@@ -18,8 +18,8 @@
   "d1_databases": [
     {
       "binding": "DB",
-      "database_name": "unibreeze-db"
-      // "database_id": "<paste-after-creating>"
+      "database_name": "unibreeze-db",
+      "database_id": "6bc032e8-6c8d-4b96-84d1-7743b6961b79"
     }
   ],
 
