@@ -3,42 +3,406 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>UniBreeze</title>
+  <title>UniBreeze — your college process, simplified</title>
   <style>
-    :root { color-scheme: light dark; }
-    body { font-family: system-ui, sans-serif; max-width: 40rem; margin: 4rem auto; padding: 0 1rem; line-height: 1.5; }
-    h1 { margin-bottom: 0.25rem; }
-    .muted { color: #888; }
-    button { padding: 0.5rem 1rem; font-size: 1rem; cursor: pointer; }
-    input { padding: 0.5rem; font-size: 1rem; }
-    pre { background: rgba(127,127,127,0.12); padding: 1rem; border-radius: 8px; overflow:auto; }
+    :root {
+      --bg: #f6f8fb; --card: #ffffff; --ink: #1a2233; --muted: #6b7689;
+      --line: #e4e9f1; --brand: #3b6ef5; --brand-d: #2f59c9;
+      --ok: #16a34a; --warn: #d97706; --danger: #dc2626; --soft: #eef3fe;
+      --shadow: 0 1px 3px rgba(20,30,60,.08), 0 6px 20px rgba(20,30,60,.06);
+    }
+    @media (prefers-color-scheme: dark) {
+      :root { --bg:#0f131a; --card:#161c26; --ink:#e9eef7; --muted:#94a0b4;
+        --line:#252d3a; --soft:#19233a; --shadow:0 1px 3px rgba(0,0,0,.4); }
+    }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      background: var(--bg); color: var(--ink); line-height: 1.45; }
+    button { font: inherit; cursor: pointer; border: none; border-radius: 9px; }
+    input, select, textarea { font: inherit; color: var(--ink); background: var(--card);
+      border: 1px solid var(--line); border-radius: 9px; padding: .55rem .7rem; width: 100%; }
+    textarea { resize: vertical; min-height: 90px; }
+    label { font-size: .8rem; color: var(--muted); display:block; margin: .6rem 0 .2rem; }
+    .btn { background: var(--brand); color:#fff; padding:.6rem 1rem; font-weight:600; }
+    .btn:hover { background: var(--brand-d); }
+    .btn.sm { padding:.35rem .6rem; font-size:.85rem; }
+    .btn.ghost { background: transparent; color: var(--brand); border:1px solid var(--line); }
+    .btn.ghost:hover { background: var(--soft); }
+    .btn.danger { background: transparent; color: var(--danger); }
+    .row { display:flex; gap:.6rem; align-items:center; }
+    .wrap { max-width: 1040px; margin: 0 auto; padding: 0 1rem; }
+    .hidden { display:none !important; }
+
+    /* Header */
+    header.app { background: var(--card); border-bottom:1px solid var(--line); position:sticky; top:0; z-index:5; }
+    header.app .wrap { display:flex; align-items:center; justify-content:space-between; height:58px; }
+    .logo { font-weight:800; font-size:1.15rem; letter-spacing:-.02em; }
+    .logo span { color: var(--brand); }
+
+    /* Auth */
+    .auth { min-height: 100vh; display:grid; place-items:center; padding:1rem; }
+    .auth .card { width: 100%; max-width: 400px; }
+    .card { background: var(--card); border:1px solid var(--line); border-radius:16px; padding:1.4rem; box-shadow: var(--shadow); }
+    .tabs { display:flex; gap:.4rem; margin-bottom:1rem; }
+    .tabs button { flex:1; padding:.5rem; background:var(--soft); color:var(--muted); font-weight:600; }
+    .tabs button.active { background: var(--brand); color:#fff; }
+    .err { color: var(--danger); font-size:.85rem; margin-top:.5rem; min-height:1rem; }
+    .hero { text-align:center; margin-bottom:1rem; }
+    .hero h1 { margin:.2rem 0; font-size:1.6rem; letter-spacing:-.03em; }
+    .hero p { color: var(--muted); margin:.2rem 0 0; }
+
+    /* Layout */
+    main { padding: 1.4rem 0 4rem; }
+    .stats { display:grid; grid-template-columns: repeat(4,1fr); gap:.8rem; margin-bottom:1.2rem; }
+    .stat { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:.8rem 1rem; }
+    .stat b { font-size:1.5rem; display:block; }
+    .stat span { color:var(--muted); font-size:.8rem; }
+    .grid { display:grid; grid-template-columns: 290px 1fr; gap:1.2rem; align-items:start; }
+    @media (max-width: 820px){ .grid{ grid-template-columns:1fr; } .stats{ grid-template-columns:repeat(2,1fr);} }
+    h2.sec { font-size:.85rem; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); margin:.2rem 0 .6rem; }
+
+    .school { padding:.6rem .7rem; border:1px solid var(--line); border-radius:10px; margin-bottom:.5rem; cursor:pointer; background:var(--card); }
+    .school:hover { border-color: var(--brand); }
+    .school.active { border-color: var(--brand); background: var(--soft); }
+    .school .nm { font-weight:600; }
+    .school .meta { font-size:.78rem; color:var(--muted); display:flex; justify-content:space-between; margin-top:.15rem; }
+    .pill { font-size:.7rem; padding:.1rem .45rem; border-radius:999px; background:var(--soft); color:var(--brand); border:1px solid var(--line); }
+
+    .task { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:.7rem .8rem; margin-bottom:.6rem; display:flex; gap:.7rem; }
+    .task.done { opacity:.6; }
+    .task.done .t-title { text-decoration: line-through; }
+    .check { width:22px; height:22px; min-width:22px; border-radius:6px; border:2px solid var(--line); margin-top:2px; cursor:pointer; display:grid; place-items:center; background:var(--card); }
+    .check.on { background:var(--ok); border-color:var(--ok); color:#fff; }
+    .t-title { font-weight:600; }
+    .t-meta { font-size:.78rem; color:var(--muted); display:flex; flex-wrap:wrap; gap:.5rem; margin-top:.25rem; }
+    .t-details { font-size:.85rem; color:var(--muted); margin-top:.35rem; white-space:pre-wrap; }
+    .tip { font-size:.82rem; background:var(--soft); border-radius:8px; padding:.4rem .55rem; margin-top:.4rem; }
+    .tip b { color: var(--brand); }
+    .due-soon { color: var(--warn); font-weight:600; }
+    .due-over { color: var(--danger); font-weight:600; }
+    .p1 { border-left:3px solid var(--danger); }
+    .p3 { border-left:3px solid var(--line); }
+
+    /* Modal */
+    .modal-bg { position:fixed; inset:0; background:rgba(10,16,28,.5); display:grid; place-items:center; padding:1rem; z-index:20; }
+    .modal { width:100%; max-width:560px; max-height:88vh; overflow:auto; }
+    .modal h3 { margin:.1rem 0 1rem; }
+    .muted { color: var(--muted); }
+    .seg { display:flex; gap:.4rem; flex-wrap:wrap; }
+    .seg button { padding:.3rem .6rem; background:var(--soft); color:var(--muted); font-size:.85rem; }
+    .seg button.on { background:var(--brand); color:#fff; }
+    .doc { display:flex; justify-content:space-between; align-items:center; padding:.5rem .6rem; border:1px solid var(--line); border-radius:9px; margin-bottom:.4rem; font-size:.9rem; }
+    .proposed { border:1px dashed var(--brand); border-radius:10px; padding:.6rem; margin-bottom:.5rem; }
+    .spin { display:inline-block; width:16px; height:16px; border:2px solid var(--line); border-top-color:var(--brand); border-radius:50%; animation:s .7s linear infinite; vertical-align:-3px; }
+    @keyframes s { to { transform: rotate(360deg);} }
+    .empty { text-align:center; color:var(--muted); padding:2.5rem 1rem; border:1px dashed var(--line); border-radius:12px; }
+    .toolbar { display:flex; gap:.5rem; flex-wrap:wrap; margin-bottom:1rem; align-items:center; }
+    .grow { flex:1; }
   </style>
 </head>
 <body>
-  <h1>UniBreeze 🌬️</h1>
-  <p class="muted">Full-stack Cloudflare Worker — Workers + D1 + R2.</p>
+  <!-- AUTH VIEW -->
+  <div id="authView" class="auth">
+    <div class="card">
+      <div class="hero">
+        <div class="logo">Uni<span>Breeze</span> 🌬️</div>
+        <h1>Your college process, simplified.</h1>
+        <p>One checklist for every school. Drop in a counselor worksheet and AI turns it into tracked to-dos.</p>
+      </div>
+      <div class="tabs">
+        <button id="tabLogin" class="active" onclick="setAuthTab('login')">Log in</button>
+        <button id="tabSignup" onclick="setAuthTab('signup')">Sign up</button>
+      </div>
+      <form id="authForm" onsubmit="return submitAuth(event)">
+        <div id="nameField" class="hidden">
+          <label>Your name</label>
+          <input id="auName" autocomplete="name" />
+        </div>
+        <label>Email</label>
+        <input id="auEmail" type="email" autocomplete="email" required />
+        <label>Password <span class="muted" id="pwHint"></span></label>
+        <input id="auPass" type="password" autocomplete="current-password" required />
+        <div class="err" id="authErr"></div>
+        <button class="btn" style="width:100%; margin-top:.6rem" id="authSubmit" type="submit">Log in</button>
+      </form>
+    </div>
+  </div>
 
-  <h2>Add an item (D1)</h2>
-  <input id="name" placeholder="item name" />
-  <button id="add">Add</button>
-  <button id="refresh">Refresh list</button>
-  <pre id="out">Loading…</pre>
+  <!-- APP VIEW -->
+  <div id="appView" class="hidden">
+    <header class="app">
+      <div class="wrap">
+        <div class="logo">Uni<span>Breeze</span> 🌬️</div>
+        <div class="row">
+          <button class="btn ghost sm" onclick="openImport()">+ Import worksheet</button>
+          <button class="btn sm" onclick="openTask()">+ Task</button>
+          <button class="btn danger sm" onclick="logout()">Log out</button>
+        </div>
+      </div>
+    </header>
+    <main class="wrap">
+      <div class="stats" id="stats"></div>
+      <div class="grid">
+        <div>
+          <div class="row" style="justify-content:space-between">
+            <h2 class="sec">My schools</h2>
+            <button class="btn ghost sm" onclick="openSchool()">+ Add</button>
+          </div>
+          <div id="schoolList"></div>
+          <h2 class="sec" style="margin-top:1.2rem">Document vault</h2>
+          <div id="docList"></div>
+          <button class="btn ghost sm" style="width:100%; margin-top:.4rem" onclick="openImport()">Upload a document</button>
+        </div>
+        <div>
+          <div class="toolbar">
+            <strong id="taskHeading" class="grow">All tasks</strong>
+            <div class="seg" id="filterSeg">
+              <button class="on" data-f="open" onclick="setFilter('open')">Open</button>
+              <button data-f="all" onclick="setFilter('all')">All</button>
+              <button data-f="done" onclick="setFilter('done')">Done</button>
+            </div>
+          </div>
+          <div id="taskList"></div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <div id="modalRoot"></div>
 
   <script>
-    const out = document.getElementById('out');
-    async function load() {
-      const r = await fetch('/api/items');
-      out.textContent = JSON.stringify(await r.json(), null, 2);
-    }
-    document.getElementById('add').onclick = async () => {
-      const name = document.getElementById('name').value.trim();
-      if (!name) return;
-      await fetch('/api/items', { method: 'POST', headers: {'content-type':'application/json'}, body: JSON.stringify({ name }) });
-      document.getElementById('name').value = '';
-      load();
-    };
-    document.getElementById('refresh').onclick = load;
-    load().catch(e => out.textContent = String(e));
+  // ---------- state ----------
+  const S = { user:null, schools:[], tasks:[], docs:[], filter:'open', activeSchool:null, authMode:'login' };
+  const $ = (id) => document.getElementById(id);
+  const api = async (path, opts={}) => {
+    const r = await fetch(path, { headers:{'content-type':'application/json'}, ...opts });
+    const data = await r.json().catch(()=>({}));
+    if (!r.ok) throw new Error(data.error || ('Error '+r.status));
+    return data;
+  };
+  const esc = (s)=> String(s??'').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+  // ---------- auth ----------
+  function setAuthTab(mode){
+    S.authMode = mode;
+    $('tabLogin').classList.toggle('active', mode==='login');
+    $('tabSignup').classList.toggle('active', mode==='signup');
+    $('nameField').classList.toggle('hidden', mode!=='signup');
+    $('authSubmit').textContent = mode==='login' ? 'Log in' : 'Create account';
+    $('pwHint').textContent = mode==='signup' ? '(8+ characters)' : '';
+    $('auPass').autocomplete = mode==='login' ? 'current-password' : 'new-password';
+    $('authErr').textContent='';
+  }
+  async function submitAuth(e){
+    e.preventDefault();
+    $('authErr').textContent='';
+    const email=$('auEmail').value.trim(), password=$('auPass').value;
+    const body = { email, password };
+    if (S.authMode==='signup') body.display_name = $('auName').value.trim();
+    try {
+      await api('/api/auth/'+(S.authMode==='signup'?'signup':'login'), { method:'POST', body: JSON.stringify(body) });
+      await boot();
+    } catch(err){ $('authErr').textContent = err.message; }
+    return false;
+  }
+  async function logout(){ await api('/api/auth/logout',{method:'POST'}); location.reload(); }
+
+  // ---------- data ----------
+  async function refresh(){
+    const [s,t,d] = await Promise.all([api('/api/schools'), api('/api/tasks'), api('/api/documents')]);
+    S.schools=s.schools; S.tasks=t.tasks; S.docs=d.documents;
+    render();
+  }
+
+  // ---------- render ----------
+  const fmtDate = (iso)=>{ if(!iso) return ''; const d=new Date(iso+'T00:00:00'); return d.toLocaleDateString(undefined,{month:'short',day:'numeric'}); };
+  function dueClass(iso){ if(!iso) return ''; const days=(new Date(iso+'T00:00:00')-new Date(new Date().toDateString()))/86400000; if(days<0) return 'due-over'; if(days<=10) return 'due-soon'; return ''; }
+  const catLabel = (c)=>({essay:'✍️ Essay',form:'📝 Form',testing:'🎯 Testing',recommendation:'🤝 Rec letter','financial-aid':'💰 Financial aid',activity:'⭐ Activity',deadline:'⏰ Deadline'}[c]||'• '+(c||'Task'));
+
+  function render(){
+    // stats
+    const open = S.tasks.filter(t=>t.status!=='done');
+    const soon = open.filter(t=>t.due_date && (new Date(t.due_date+'T00:00:00')-new Date(new Date().toDateString()))/86400000 <= 10);
+    const done = S.tasks.filter(t=>t.status==='done').length;
+    $('stats').innerHTML = `
+      ${stat(S.schools.length,'Schools')}
+      ${stat(open.length,'Open tasks')}
+      ${stat(soon.length,'Due within 10 days')}
+      ${stat(done,'Completed')}`;
+
+    // schools
+    $('schoolList').innerHTML = (S.schools.length? '' : `<div class="muted" style="font-size:.85rem">No schools yet.</div>`) +
+      S.schools.map(sc=>{
+        const n = S.tasks.filter(t=>t.school_id===sc.id && t.status!=='done').length;
+        return `<div class="school ${S.activeSchool===sc.id?'active':''}" onclick="toggleSchool(${sc.id})">
+          <div class="nm">${esc(sc.name)}</div>
+          <div class="meta"><span>${sc.platform?esc(sc.platform):'—'} ${sc.app_round?'· '+esc(sc.app_round):''}</span>
+          <span>${sc.deadline?`<span class="${dueClass(sc.deadline)}">${fmtDate(sc.deadline)}</span>`:''} ${n?`<span class="pill">${n}</span>`:''}</span></div>
+        </div>`;}).join('');
+
+    // docs
+    $('docList').innerHTML = (S.docs.length? '' : `<div class="muted" style="font-size:.85rem">No documents.</div>`) +
+      S.docs.map(d=>`<div class="doc"><span>📄 <a href="/api/documents/${d.id}/download" target="_blank">${esc(d.filename)}</a></span>
+        <span class="row"><button class="btn ghost sm" onclick="parseDoc(${d.id})">AI tasks</button>
+        <button class="btn danger sm" onclick="delDoc(${d.id})">✕</button></span></div>`).join('');
+
+    // tasks
+    let list = S.tasks.slice();
+    if (S.activeSchool) list = list.filter(t=>t.school_id===S.activeSchool);
+    if (S.filter==='open') list = list.filter(t=>t.status!=='done');
+    if (S.filter==='done') list = list.filter(t=>t.status==='done');
+    const sc = S.activeSchool ? S.schools.find(s=>s.id===S.activeSchool) : null;
+    $('taskHeading').textContent = sc ? sc.name+' — tasks' : 'All tasks';
+
+    $('taskList').innerHTML = list.length ? list.map(taskHtml).join('') :
+      `<div class="empty">No tasks here yet.<br><br>
+        <button class="btn" onclick="openImport()">Import a worksheet</button>
+        <button class="btn ghost" onclick="openTask()">Add a task</button></div>`;
+  }
+  const stat = (n,l)=>`<div class="stat"><b>${n}</b><span>${l}</span></div>`;
+  function taskHtml(t){
+    const sc = S.schools.find(s=>s.id===t.school_id);
+    return `<div class="task ${t.status==='done'?'done':''} ${t.priority===1?'p1':t.priority===3?'p3':''}">
+      <div class="check ${t.status==='done'?'on':''}" onclick="toggleTask(${t.id})">${t.status==='done'?'✓':''}</div>
+      <div class="grow">
+        <div class="t-title">${esc(t.title)}</div>
+        <div class="t-meta">
+          <span>${catLabel(t.category)}</span>
+          ${sc?`<span>🏫 ${esc(sc.name)}</span>`:''}
+          ${t.due_date?`<span class="${dueClass(t.due_date)}">📅 ${fmtDate(t.due_date)}</span>`:''}
+          ${t.source && t.source.startsWith('import')?`<span class="muted">imported</span>`:''}
+        </div>
+        ${t.details?`<div class="t-details">${esc(t.details)}</div>`:''}
+        ${t.tips?`<div class="tip"><b>Tip:</b> ${esc(t.tips)}</div>`:''}
+      </div>
+      <button class="btn danger sm" onclick="delTask(${t.id})">✕</button>
+    </div>`;
+  }
+
+  function setFilter(f){ S.filter=f; [...$('filterSeg').children].forEach(b=>b.classList.toggle('on', b.dataset.f===f)); render(); }
+  function toggleSchool(id){ S.activeSchool = S.activeSchool===id?null:id; render(); }
+
+  // ---------- task actions ----------
+  async function toggleTask(id){
+    const t = S.tasks.find(x=>x.id===id); if(!t) return;
+    const status = t.status==='done'?'todo':'done';
+    t.status=status; render();
+    await api('/api/tasks/'+id,{method:'PATCH',body:JSON.stringify({status})});
+  }
+  async function delTask(id){ await api('/api/tasks/'+id,{method:'DELETE'}); await refresh(); }
+  async function delDoc(id){ if(!confirm('Delete this document?'))return; await api('/api/documents/'+id,{method:'DELETE'}); await refresh(); }
+
+  // ---------- modals ----------
+  function closeModal(){ $('modalRoot').innerHTML=''; }
+  function modal(html){ $('modalRoot').innerHTML = `<div class="modal-bg" onclick="if(event.target===this)closeModal()"><div class="card modal">${html}</div></div>`; }
+  const schoolOptions = (sel)=> `<option value="">— No school —</option>`+S.schools.map(s=>`<option value="${s.id}" ${sel===s.id?'selected':''}>${esc(s.name)}</option>`).join('');
+
+  function openSchool(){
+    modal(`<h3>Add a school</h3>
+      <label>School name</label><input id="m_name" placeholder="e.g. UC Berkeley" />
+      <div class="row"><div class="grow"><label>Application platform</label>
+        <select id="m_platform"><option value="">—</option><option>commonapp</option><option>uc</option><option>coalition</option><option>direct</option><option>other</option></select></div>
+      <div class="grow"><label>Round</label>
+        <select id="m_round"><option value="">—</option><option>ED</option><option>EA</option><option>REA</option><option>RD</option><option>rolling</option></select></div></div>
+      <label>Deadline</label><input id="m_deadline" type="date" />
+      <div class="err" id="m_err"></div>
+      <div class="row" style="justify-content:flex-end; margin-top:1rem"><button class="btn ghost" onclick="closeModal()">Cancel</button>
+      <button class="btn" onclick="saveSchool()">Add school</button></div>`);
+  }
+  async function saveSchool(){
+    const name=$('m_name').value.trim(); if(!name){ $('m_err').textContent='Name required.'; return; }
+    try{ await api('/api/schools',{method:'POST',body:JSON.stringify({name,platform:$('m_platform').value||null,app_round:$('m_round').value||null,deadline:$('m_deadline').value||null})});
+      closeModal(); await refresh(); }catch(e){ $('m_err').textContent=e.message; }
+  }
+
+  function openTask(){
+    modal(`<h3>Add a task</h3>
+      <label>What needs to get done?</label><input id="m_title" placeholder="e.g. Finish UC PIQ #1" />
+      <div class="row"><div class="grow"><label>School</label><select id="m_school">${schoolOptions(S.activeSchool)}</select></div>
+      <div class="grow"><label>Category</label><select id="m_cat">
+        <option value="other">Other</option><option value="essay">Essay</option><option value="form">Form</option><option value="testing">Testing</option>
+        <option value="recommendation">Rec letter</option><option value="financial-aid">Financial aid</option><option value="activity">Activity</option><option value="deadline">Deadline</option>
+      </select></div></div>
+      <div class="row"><div class="grow"><label>Due date</label><input id="m_due" type="date" /></div>
+      <div class="grow"><label>Priority</label><select id="m_pri"><option value="2">Normal</option><option value="1">High</option><option value="3">Low</option></select></div></div>
+      <label>Details (optional)</label><textarea id="m_details"></textarea>
+      <div class="err" id="m_err"></div>
+      <div class="row" style="justify-content:flex-end; margin-top:1rem"><button class="btn ghost" onclick="closeModal()">Cancel</button>
+      <button class="btn" onclick="saveTask()">Add task</button></div>`);
+  }
+  async function saveTask(){
+    const title=$('m_title').value.trim(); if(!title){ $('m_err').textContent='Title required.'; return; }
+    try{ await api('/api/tasks',{method:'POST',body:JSON.stringify({title, school_id: Number($('m_school').value)||null, category:$('m_cat').value, due_date:$('m_due').value||null, priority:Number($('m_pri').value), details:$('m_details').value.trim()||null})});
+      closeModal(); await refresh(); }catch(e){ $('m_err').textContent=e.message; }
+  }
+
+  // ---------- import ----------
+  function openImport(){
+    modal(`<h3>Import a worksheet</h3>
+      <p class="muted" style="margin-top:-.4rem">Upload a PDF/image or paste text. Claude pulls out the action items and you pick which to add.</p>
+      <div class="seg" style="margin-bottom:.6rem">
+        <button id="imTabFile" class="on" onclick="impTab('file')">Upload file</button>
+        <button id="imTabText" onclick="impTab('text')">Paste text</button>
+      </div>
+      <div id="imFile"><label>File (PDF, image, or text — 15MB max)</label><input id="m_file" type="file" accept=".pdf,.png,.jpg,.jpeg,.webp,.txt,.md" /></div>
+      <div id="imText" class="hidden"><label>Paste the assignment / instructions</label><textarea id="m_text" style="min-height:140px"></textarea></div>
+      <label>Assign extracted tasks to (optional)</label><select id="m_impSchool">${schoolOptions(S.activeSchool)}</select>
+      <div class="err" id="m_err"></div>
+      <div id="m_proposed"></div>
+      <div class="row" style="justify-content:flex-end; margin-top:1rem">
+        <button class="btn ghost" onclick="closeModal()">Cancel</button>
+        <button class="btn" id="m_go" onclick="runImport()">Analyze with AI</button>
+      </div>`);
+  }
+  let impMode='file';
+  function impTab(m){ impMode=m; $('imTabFile').classList.toggle('on',m==='file'); $('imTabText').classList.toggle('on',m==='text');
+    $('imFile').classList.toggle('hidden',m!=='file'); $('imText').classList.toggle('hidden',m!=='text'); }
+
+  async function runImport(){
+    $('m_err').textContent=''; const go=$('m_go'); go.disabled=true; go.innerHTML='<span class="spin"></span> Analyzing…';
+    try{
+      let docId=null, text=null;
+      if(impMode==='file'){
+        const f=$('m_file').files[0]; if(!f){ throw new Error('Choose a file first.'); }
+        const fd=new FormData(); fd.append('file',f);
+        const up=await fetch('/api/documents',{method:'POST',body:fd}); const ud=await up.json(); if(!up.ok) throw new Error(ud.error||'Upload failed'); docId=ud.id;
+      } else {
+        text=$('m_text').value.trim(); if(!text) throw new Error('Paste some text first.');
+      }
+      const res=await api('/api/import/parse',{method:'POST',body:JSON.stringify(docId?{documentId:docId}:{text})});
+      renderProposed(res.tasks||[]);
+    }catch(e){ $('m_err').textContent=e.message; }
+    finally{ go.disabled=false; go.textContent='Analyze with AI'; }
+  }
+  let proposed=[];
+  function renderProposed(tasks){
+    proposed=tasks;
+    if(!tasks.length){ $('m_proposed').innerHTML=`<div class="muted" style="margin-top:.6rem">No action items found.</div>`; return; }
+    $('m_proposed').innerHTML = `<h4 style="margin:1rem 0 .5rem">Found ${tasks.length} task${tasks.length>1?'s':''} — uncheck any to skip:</h4>`+
+      tasks.map((t,i)=>`<div class="proposed"><label class="row" style="align-items:flex-start; margin:0">
+        <input type="checkbox" data-i="${i}" checked style="width:auto; margin-top:.2rem" />
+        <span class="grow"><b>${esc(t.title)}</b>
+        <div class="t-meta">${catLabel(t.category)} ${t.due_date?'· 📅 '+fmtDate(t.due_date):''} ${t.priority===1?'· High':''}</div>
+        ${t.tips?`<div class="tip"><b>Tip:</b> ${esc(t.tips)}</div>`:''}</span></label></div>`).join('')+
+      `<button class="btn" style="width:100%" onclick="addProposed()">Add selected to my checklist</button>`;
+  }
+  async function addProposed(){
+    const picks=[...document.querySelectorAll('#m_proposed input[type=checkbox]')].filter(c=>c.checked).map(c=>proposed[Number(c.dataset.i)]);
+    if(!picks.length){ closeModal(); return; }
+    await api('/api/tasks/bulk',{method:'POST',body:JSON.stringify({tasks:picks, school_id:Number($('m_impSchool').value)||null, source:'import'})});
+    closeModal(); await refresh();
+  }
+  async function parseDoc(id){ openImport(); impTab('file'); $('m_err').textContent='Analyzing saved document…';
+    try{ const res=await api('/api/import/parse',{method:'POST',body:JSON.stringify({documentId:id})}); $('m_err').textContent=''; renderProposed(res.tasks||[]); }
+    catch(e){ $('m_err').textContent=e.message; } }
+
+  // ---------- boot ----------
+  async function boot(){
+    const me = await api('/api/auth/me').catch(()=>({user:null}));
+    if(me.user){ S.user=me.user; $('authView').classList.add('hidden'); $('appView').classList.remove('hidden'); await refresh(); }
+    else { $('authView').classList.remove('hidden'); $('appView').classList.add('hidden'); }
+  }
+  boot();
   </script>
 </body>
 </html>
