@@ -5,6 +5,14 @@
   "compatibility_date": "2026-06-27",
   "compatibility_flags": ["nodejs_compat"],
 
+  // Custom domains. The unibreeze.net zone lives in this Cloudflare account
+  // (registered via Cloudflare Registrar), so deploying provisions the DNS
+  // records and TLS automatically.
+  "routes": [
+    { "pattern": "unibreeze.net", "custom_domain": true },
+    { "pattern": "www.unibreeze.net", "custom_domain": true }
+  ],
+
   // Front-end: static assets served from ./public.
   // The ASSETS binding lets the Worker serve them (env.ASSETS.fetch).
   "assets": {
