@@ -233,6 +233,11 @@ async function upsertSyncedTask(env: Env, userId: number, ev: CanvasEvent, done 
   return "added";
 }
 
+// TEMP: lightweight debug logger to D1 (removed after Canvas troubleshooting).
+async function logDebug(env: Env, userId: number, detail: string): Promise<void> {
+  try { await env.DB.prepare("INSERT INTO debug_log (user_id, detail) VALUES (?, ?)").bind(userId, detail.slice(0, 800)).run(); } catch {}
+}
+
 async function syncCanvas(env: Env, userId: number, conn: any): Promise<{ added: number; updated: number; found: number }> {
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const cutoff = new Date(today.getTime() - 2 * 86400000); // include last 2 days
@@ -258,21 +263,27 @@ async function syncCanvas(env: Env, userId: number, conn: any): Promise<{ added:
     }
   } else if (conn.ics_url) {
     const url = conn.ics_url.replace(/^webcal:\/\//i, "https://");
-    const res = await fetch(url, {
-      headers: {
-        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-        "Accept": "text/calendar, text/html;q=0.9, */*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.9",
-      },
-    });
-    if (!res.ok) {
-      const snip = (await res.text().catch(() => "")).replace(/\s+/g, " ").slice(0, 140);
-      throw new Error(`Could not fetch the calendar feed (HTTP ${res.status}).${snip ? " Canvas said: " + snip : ""}`);
+    const CHROME = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
+    // TEMP DIAGNOSTIC: try several request styles, log each to debug_log, use the first that works.
+    const attempts: { label: string; headers: Record<string, string> }[] = [
+      { label: "chrome+accept", headers: { "User-Agent": CHROME, "Accept": "text/calendar, text/html;q=0.9, */*;q=0.8", "Accept-Language": "en-US,en;q=0.9" } },
+      { label: "chrome-only", headers: { "User-Agent": CHROME } },
+      { label: "curl", headers: { "User-Agent": "curl/8.4.0", "Accept": "*/*" } },
+      { label: "accept-only", headers: { "Accept": "text/calendar" } },
+      { label: "bare", headers: {} },
+    ];
+    let text = "";
+    for (const a of attempts) {
+      try {
+        const r = await fetch(url, { headers: a.headers });
+        const body = await r.text();
+        await logDebug(env, userId, `${a.label}: HTTP ${r.status} ct=${r.headers.get("content-type")} len=${body.length} snip=${body.replace(/\s+/g, " ").slice(0, 100)}`);
+        if (r.ok && body.includes("BEGIN:VCALENDAR")) { text = body; await logDebug(env, userId, `WORKING METHOD: ${a.label}`); break; }
+      } catch (e) {
+        await logDebug(env, userId, `${a.label}: THREW ${String(e).slice(0, 120)}`);
+      }
     }
-    const text = await res.text();
-    if (!text.includes("BEGIN:VCALENDAR")) {
-      throw new Error(`That URL didn't return a Canvas calendar feed (got ${res.headers.get("content-type") || "unknown"}). Use the .ics link from Canvas → Calendar → Calendar Feed.`);
-    }
+    if (!text) throw new Error("Could not fetch the calendar feed by any method — diagnostics logged, checking now.");
     for (const ev of parseICS(text)) {
       if (ev.due >= cutoff.toISOString().slice(0, 10)) events.push({ ev, done: false });
     }
