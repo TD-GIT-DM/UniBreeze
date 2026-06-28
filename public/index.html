@@ -462,42 +462,49 @@
   }
   function openCanvas(){
     modal(`<h3>📚 Connect Canvas</h3>
-      <p class="muted" style="margin-top:-.4rem">Your assignment due dates flow into your checklist. Pick the easy way (Calendar Feed) or the token method.</p>
-      <div class="seg" style="margin-bottom:.6rem">
-        <button id="cvTabFeed" class="on" onclick="cvTab('feed')">Calendar Feed (easy)</button>
-        <button id="cvTabToken" onclick="cvTab('token')">Access token</button>
-      </div>
-      <div id="cvFeed">
-        <label>Canvas Calendar Feed URL</label>
-        <input id="cv_ics" placeholder="https://yourschool.instructure.com/feeds/calendars/user_xxx.ics" />
-        <div class="tip" style="margin-top:.5rem">In Canvas: <b>Calendar → Calendar Feed</b> (bottom-right) → copy the link. It's read-only and can't change anything in Canvas.</div>
-      </div>
-      <div id="cvToken" class="hidden">
-        <label>Canvas web address</label>
-        <input id="cv_base" placeholder="yourschool.instructure.com" />
-        <label>Access token</label>
-        <input id="cv_token" placeholder="paste token" />
-        <div class="tip" style="margin-top:.5rem">In Canvas: <b>Account → Settings → New Access Token</b>. (Some schools disable this — use the feed instead.)</div>
-      </div>
+      <p class="muted" style="margin-top:-.4rem">One paste and your assignments show up here — and stay updated. About 20 seconds.</p>
+      <ol style="padding-left:1.15rem; font-size:.92rem; margin:.7rem 0 .5rem; line-height:1.7">
+        <li>Open <b>Calendar</b> in Canvas (left menu).</li>
+        <li>Scroll down on the right and click <b>Calendar Feed</b>.</li>
+        <li>Copy that link and paste it below 👇</li>
+      </ol>
+      <input id="cv_ics" placeholder="Paste your Canvas Calendar Feed link" autofocus />
       <div class="err" id="cv_err"></div>
       <div class="row" style="justify-content:flex-end; margin-top:1rem">
         <button class="btn ghost" onclick="closeModal()">Cancel</button>
-        <button class="btn" id="cv_go" onclick="saveCanvas()">Connect & sync</button>
+        <button class="btn" id="cv_go" onclick="saveCanvas()">Connect</button>
+      </div>
+      <div style="text-align:center; margin-top:1rem">
+        <a href="#" class="muted" style="font-size:.8rem" onclick="toggleCvAdv(event)">Advanced: use an access token instead ▾</a>
+      </div>
+      <div id="cvAdv" class="hidden" style="margin-top:.7rem; border-top:1px solid var(--line); padding-top:.8rem">
+        <label>Canvas web address</label>
+        <input id="cv_base" placeholder="athenian.instructure.com" />
+        <label>Access token</label>
+        <input id="cv_token" placeholder="paste token" />
+        <div class="tip" style="margin-top:.5rem">Canvas → <b>Account → Settings → New Access Token</b>. Some schools disable this — if so, use the feed above.</div>
+        <button class="btn" style="width:100%; margin-top:.7rem" id="cv_go2" onclick="saveCanvasToken()">Connect with token</button>
       </div>`);
   }
-  let cvMode='feed';
-  function cvTab(m){ cvMode=m; $('cvTabFeed').classList.toggle('on',m==='feed'); $('cvTabToken').classList.toggle('on',m==='token');
-    $('cvFeed').classList.toggle('hidden',m!=='feed'); $('cvToken').classList.toggle('hidden',m!=='token'); }
-  async function saveCanvas(){
-    $('cv_err').textContent=''; const go=$('cv_go'); go.disabled=true; go.innerHTML='<span class="spin"></span> Connecting…';
-    const body = cvMode==='feed' ? { ics_url: $('cv_ics').value.trim() } : { base_url: $('cv_base').value.trim(), token: $('cv_token').value.trim() };
+  function toggleCvAdv(e){ if(e&&e.preventDefault)e.preventDefault(); $('cvAdv').classList.toggle('hidden'); }
+  async function doCanvasConnect(body, btn){
+    $('cv_err').textContent=''; const orig=btn.textContent; btn.disabled=true; btn.innerHTML='<span class="spin"></span> Connecting…';
     try{
       const r = await api('/api/integrations/canvas',{method:'POST',body:JSON.stringify(body)});
+      if(r.warning){ $('cv_err').textContent=r.warning; btn.disabled=false; btn.textContent=orig; return; }
       closeModal(); await refresh();
-      if(r.warning) alert('Connected, but sync had an issue:\n'+r.warning);
-      else alert(`Canvas connected! Imported ${r.added} assignment${r.added===1?'':'s'} (${r.found} found).`);
-    }catch(e){ $('cv_err').textContent=e.message; }
-    finally{ go.disabled=false; go.textContent='Connect & sync'; }
+      alert(`Canvas connected! Imported ${r.added} assignment${r.added===1?'':'s'} (${r.found} found). It'll keep syncing automatically.`);
+    }catch(e){ $('cv_err').textContent=e.message; btn.disabled=false; btn.textContent=orig; }
+  }
+  function saveCanvas(){
+    let v=$('cv_ics').value.trim().replace(/^webcal:\/\//i,'https://');
+    if(!v){ $('cv_err').textContent='Paste your Calendar Feed link first.'; return; }
+    doCanvasConnect({ ics_url:v }, $('cv_go'));
+  }
+  function saveCanvasToken(){
+    const base=$('cv_base').value.trim(), token=$('cv_token').value.trim();
+    if(!base||!token){ $('cv_err').textContent='Enter both your Canvas address and a token.'; return; }
+    doCanvasConnect({ base_url:base, token }, $('cv_go2'));
   }
   async function syncCanvasNow(){
     const btn=$('canvasSyncBtn'); if(btn){ btn.disabled=true; btn.innerHTML='<span class="spin"></span> Syncing…'; }

@@ -257,10 +257,15 @@ async function syncCanvas(env: Env, userId: number, conn: any): Promise<{ added:
       });
     }
   } else if (conn.ics_url) {
-    const res = await fetch(conn.ics_url, { headers: { "user-agent": "UniBreeze/1.0" } });
+    const url = conn.ics_url.replace(/^webcal:\/\//i, "https://");
+    const res = await fetch(url, {
+      headers: { "user-agent": "Mozilla/5.0 (compatible; UniBreeze/1.0)", "accept": "text/calendar, text/plain, */*" },
+    });
     if (!res.ok) throw new Error(`Could not fetch the calendar feed (HTTP ${res.status}). Re-copy the feed URL from Canvas.`);
     const text = await res.text();
-    if (!text.includes("BEGIN:VCALENDAR")) throw new Error("That URL didn't return a Canvas calendar feed. Use the .ics link from Canvas → Calendar → Calendar Feed.");
+    if (!text.includes("BEGIN:VCALENDAR")) {
+      throw new Error(`That URL didn't return a Canvas calendar feed (got ${res.headers.get("content-type") || "unknown"}). Use the .ics link from Canvas → Calendar → Calendar Feed.`);
+    }
     for (const ev of parseICS(text)) {
       if (ev.due >= cutoff.toISOString().slice(0, 10)) events.push({ ev, done: false });
     }
@@ -475,7 +480,9 @@ export default {
       }
       if (path === "/api/integrations/canvas" && method === "POST") {
         const b = (await request.json().catch(() => ({}))) as any;
-        const ics = typeof b.ics_url === "string" && b.ics_url.trim() ? b.ics_url.trim() : null;
+        const ics = typeof b.ics_url === "string" && b.ics_url.trim()
+          ? b.ics_url.trim().replace(/^webcal:\/\//i, "https://")
+          : null;
         const base = normalizeBaseUrl(b.base_url);
         const token = typeof b.token === "string" && b.token.trim() ? b.token.trim() : null;
         if (!ics && !(base && token)) {
