@@ -98,6 +98,20 @@
     .empty { text-align:center; color:var(--muted); padding:2.5rem 1rem; border:1px dashed var(--line); border-radius:12px; }
     .toolbar { display:flex; gap:.5rem; flex-wrap:wrap; margin-bottom:1rem; align-items:center; }
     .grow { flex:1; }
+
+    /* Chat assistant */
+    .chat-fab { position:fixed; right:1.1rem; bottom:1.1rem; z-index:15; background:var(--brand); color:#fff; padding:.7rem 1.1rem; border-radius:999px; box-shadow:var(--shadow); font-weight:600; }
+    .chat-fab:hover { background:var(--brand-d); }
+    .chat-panel { position:fixed; right:1.1rem; bottom:1.1rem; width:370px; max-width:calc(100vw - 2rem); height:520px; max-height:78vh; background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:var(--shadow); display:flex; flex-direction:column; z-index:16; overflow:hidden; }
+    .chat-head { padding:.7rem .9rem; border-bottom:1px solid var(--line); display:flex; justify-content:space-between; align-items:center; font-weight:700; }
+    .chat-msgs { flex:1; overflow:auto; padding:.8rem; display:flex; flex-direction:column; gap:.5rem; }
+    .msg { padding:.5rem .7rem; border-radius:13px; max-width:86%; font-size:.9rem; white-space:pre-wrap; line-height:1.4; }
+    .msg.user { align-self:flex-end; background:var(--brand); color:#fff; border-bottom-right-radius:4px; }
+    .msg.bot { align-self:flex-start; background:var(--soft); border-bottom-left-radius:4px; }
+    .chat-suggest { display:flex; flex-wrap:wrap; gap:.35rem; padding:0 .8rem .6rem; }
+    .chat-suggest button { background:var(--soft); color:var(--brand); border:1px solid var(--line); font-size:.78rem; padding:.3rem .55rem; }
+    .chat-input { display:flex; gap:.4rem; padding:.6rem; border-top:1px solid var(--line); }
+    .chat-input textarea { min-height:auto; height:42px; }
   </style>
 </head>
 <body>
@@ -166,6 +180,22 @@
         </div>
       </div>
     </main>
+
+    <!-- Chat assistant -->
+    <button id="chatFab" class="chat-fab" onclick="toggleChat()">💬 Ask UniBreeze</button>
+    <div id="chatPanel" class="chat-panel hidden">
+      <div class="chat-head"><span>🌬️ UniBreeze Assistant</span><button class="btn ghost sm" onclick="toggleChat()">✕</button></div>
+      <div id="chatMsgs" class="chat-msgs"></div>
+      <div class="chat-suggest" id="chatSuggest">
+        <button onclick="quickChat('What should I work on next?')">What's next?</button>
+        <button onclick="quickChat('Give me tips for writing a strong UC PIQ.')">UC PIQ tips</button>
+        <button onclick="quickChat('How do I ask a teacher for a recommendation letter?')">Rec letters</button>
+      </div>
+      <form class="chat-input" onsubmit="return sendChat(event)">
+        <textarea id="chatInput" placeholder="Ask for help, tips, next steps…" rows="1"></textarea>
+        <button class="btn" type="submit">Send</button>
+      </form>
+    </div>
   </div>
 
   <div id="modalRoot"></div>
@@ -395,6 +425,40 @@
   async function parseDoc(id){ openImport(); impTab('file'); $('m_err').textContent='Analyzing saved document…';
     try{ const res=await api('/api/import/parse',{method:'POST',body:JSON.stringify({documentId:id})}); $('m_err').textContent=''; renderProposed(res.tasks||[]); }
     catch(e){ $('m_err').textContent=e.message; } }
+
+  // ---------- chat assistant ----------
+  let chatHistory=[], chatOpen=false, chatBusy=false;
+  function toggleChat(){
+    chatOpen=!chatOpen;
+    $('chatPanel').classList.toggle('hidden',!chatOpen);
+    $('chatFab').classList.toggle('hidden',chatOpen);
+    if(chatOpen && !$('chatMsgs').children.length)
+      pushMsg('bot',"Hi! I'm your college assistant 🌬️ Ask me about essays, UC PIQs, deadlines, or what to tackle next — I can see your schools and tasks.");
+    if(chatOpen) $('chatInput').focus();
+  }
+  function pushMsg(role,content){
+    const wrap=$('chatMsgs'); const d=document.createElement('div');
+    d.className='msg '+(role==='user'?'user':'bot'); d.textContent=content;
+    wrap.appendChild(d); wrap.scrollTop=wrap.scrollHeight; return d;
+  }
+  function quickChat(text){ $('chatInput').value=text; sendChat(new Event('x')); }
+  async function sendChat(e){
+    if(e&&e.preventDefault) e.preventDefault();
+    if(chatBusy) return false;
+    const inp=$('chatInput'); const text=inp.value.trim(); if(!text) return false;
+    inp.value=''; $('chatSuggest').classList.add('hidden');
+    pushMsg('user',text);
+    const thinking=pushMsg('bot','…'); thinking.classList.add('muted'); chatBusy=true;
+    try{
+      const res=await api('/api/chat',{method:'POST',body:JSON.stringify({message:text, history:chatHistory})});
+      thinking.classList.remove('muted'); thinking.textContent=res.reply;
+      chatHistory.push({role:'user',content:text},{role:'assistant',content:res.reply});
+      if(chatHistory.length>16) chatHistory=chatHistory.slice(-16);
+    }catch(err){ thinking.classList.remove('muted'); thinking.textContent='⚠️ '+err.message; }
+    finally{ chatBusy=false; }
+    return false;
+  }
+  document.addEventListener('keydown',(e)=>{ if(e.key==='Enter' && !e.shiftKey && document.activeElement && document.activeElement.id==='chatInput'){ sendChat(e); } });
 
   // ---------- boot ----------
   async function boot(){

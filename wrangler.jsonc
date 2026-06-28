@@ -20,6 +20,12 @@
     "binding": "ASSETS"
   },
 
+  // Workers AI — free daily allocation (10k Neurons/day), no API key required.
+  // Available in code as env.AI.run("@cf/meta/llama-...", { messages }).
+  "ai": {
+    "binding": "AI"
+  },
+
   // D1 (SQL database). On first import, Cloudflare can auto-create this
   // resource because no "database_id" is set. If you create it manually
   // (wrangler d1 create unibreeze-db), paste the returned id below.

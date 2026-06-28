@@ -21,8 +21,10 @@ export interface Env {
   DB: D1Database;
   BUCKET: R2Bucket;
   ASSETS: Fetcher;
+  AI: Ai;
   ANTHROPIC_API_KEY?: string;
   ANTHROPIC_MODEL?: string;
+  WORKERS_AI_MODEL?: string;
 }
 
 // ---- helpers ----------------------------------------------------------------
@@ -125,29 +127,43 @@ Rules:
 - Do not invent tasks that aren't supported by the source. If none, return {"tasks":[]}.
 - Output JSON only — no markdown, no commentary.`;
 
-async function callClaude(env: Env, content: any[]): Promise<ProposedTask[]> {
-  if (!env.ANTHROPIC_API_KEY) throw new Error("AI is not configured yet (missing ANTHROPIC_API_KEY).");
-  const model = env.ANTHROPIC_MODEL || "claude-sonnet-4-6";
+interface ChatMsg { role: "user" | "assistant"; content: string; }
+
+// Unified text completion. Free Workers AI by default; Claude if a key is set
+// (optional quality upgrade — same call sites, no duplicated paths).
+async function aiComplete(env: Env, system: string, messages: ChatMsg[], maxTokens = 1024): Promise<string> {
+  if (env.ANTHROPIC_API_KEY) {
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01" },
+      body: JSON.stringify({ model: env.ANTHROPIC_MODEL || "claude-sonnet-4-6", max_tokens: maxTokens, system, messages }),
+    });
+    if (!res.ok) throw new Error(`Claude API error ${res.status}: ${(await res.text().catch(() => "")).slice(0, 200)}`);
+    const data = (await res.json()) as any;
+    return (data.content || []).filter((b: any) => b.type === "text").map((b: any) => b.text).join("");
+  }
+  // Free path: Cloudflare Workers AI (no key, free daily allocation).
+  const model = env.WORKERS_AI_MODEL || "@cf/meta/llama-3.1-8b-instruct";
+  const out = (await env.AI.run(model as any, {
+    messages: [{ role: "system", content: system }, ...messages],
+    max_tokens: maxTokens,
+  })) as any;
+  return String(out?.response ?? "");
+}
+
+// Claude vision path for PDFs/images (only available when a key is set).
+async function callClaudeVision(env: Env, content: any[]): Promise<string> {
   const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "x-api-key": env.ANTHROPIC_API_KEY,
-      "anthropic-version": "2023-06-01",
-    },
-    body: JSON.stringify({
-      model,
-      max_tokens: 2048,
-      system: EXTRACTION_SYSTEM,
-      messages: [{ role: "user", content }],
-    }),
+    headers: { "content-type": "application/json", "x-api-key": env.ANTHROPIC_API_KEY!, "anthropic-version": "2023-06-01" },
+    body: JSON.stringify({ model: env.ANTHROPIC_MODEL || "claude-sonnet-4-6", max_tokens: 2048, system: EXTRACTION_SYSTEM, messages: [{ role: "user", content }] }),
   });
-  if (!res.ok) {
-    const detail = await res.text().catch(() => "");
-    throw new Error(`Claude API error ${res.status}: ${detail.slice(0, 300)}`);
-  }
+  if (!res.ok) throw new Error(`Claude API error ${res.status}: ${(await res.text().catch(() => "")).slice(0, 200)}`);
   const data = (await res.json()) as any;
-  const text: string = (data.content || []).filter((b: any) => b.type === "text").map((b: any) => b.text).join("");
+  return (data.content || []).filter((b: any) => b.type === "text").map((b: any) => b.text).join("");
+}
+
+function parseTasksFromText(text: string): ProposedTask[] {
   let parsed: any;
   try {
     const start = text.indexOf("{");
@@ -192,7 +208,17 @@ export default {
     try {
       // -- Health (public) --
       if (path === "/api/health") {
-        return json({ ok: true, service: "unibreeze", ai: Boolean(env.ANTHROPIC_API_KEY), time: new Date().toISOString() });
+        return json({ ok: true, service: "unibreeze", ai: true, ai_provider: env.ANTHROPIC_API_KEY ? "claude" : "workers-ai", time: new Date().toISOString() });
+      }
+
+      // -- Temporary AI self-test (token-gated, fixed tiny prompt) --
+      if (path === "/api/ai/selftest" && url.searchParams.get("k") === "ub-selftest-9f3a2") {
+        try {
+          const reply = await aiComplete(env, "You are a test. Reply with exactly: UNIBREEZE_AI_OK", [{ role: "user", content: "ping" }], 16);
+          return json({ ok: true, provider: env.ANTHROPIC_API_KEY ? "claude" : "workers-ai", reply });
+        } catch (e) {
+          return json({ ok: false, error: String(e instanceof Error ? e.message : e) }, 502);
+        }
       }
 
       // ---- Auth (public) ----
@@ -321,8 +347,10 @@ export default {
       }
       if (path === "/api/documents" && method === "POST") {
         const form = await request.formData();
-        const file = form.get("file");
-        if (!(file instanceof File)) return json({ error: "No file uploaded." }, 400);
+        const entry = form.get("file");
+        if (!entry || typeof entry === "string" || typeof (entry as any).arrayBuffer !== "function")
+          return json({ error: "No file uploaded." }, 400);
+        const file = entry as File;
         if (file.size > 15 * 1024 * 1024) return json({ error: "File too large (15MB max)." }, 400);
         const key = `u${user.id}/${randomHex(8)}-${file.name}`.slice(0, 400);
         await env.BUCKET.put(key, await file.arrayBuffer(), { httpMetadata: { contentType: file.type || "application/octet-stream" } });
@@ -360,7 +388,9 @@ export default {
       // Parse pasted text OR an uploaded document into proposed tasks (no DB writes).
       if (path === "/api/import/parse" && method === "POST") {
         const b = (await request.json().catch(() => ({}))) as any;
-        let content: any[];
+        let plainText = "";          // text path (free Workers AI)
+        let visionContent: any[] | null = null; // PDF/image path (Claude only)
+
         if (b.documentId) {
           const doc = await env.DB.prepare("SELECT r2_key, content_type FROM documents WHERE id = ? AND user_id = ?")
             .bind(Number(b.documentId), user.id).first<any>();
@@ -369,28 +399,60 @@ export default {
           if (!obj) return json({ error: "Document file missing." }, 404);
           const ct = doc.content_type || "";
           const buf = await obj.arrayBuffer();
-          if (ct === "application/pdf") {
-            content = [
-              { type: "document", source: { type: "base64", media_type: "application/pdf", data: bufToBase64(buf) } },
-              { type: "text", text: "Extract the student's action items from this document." },
-            ];
-          } else if (ct.startsWith("image/")) {
-            content = [
-              { type: "image", source: { type: "base64", media_type: ct, data: bufToBase64(buf) } },
-              { type: "text", text: "Extract the student's action items from this image." },
+          if (ct === "application/pdf" || ct.startsWith("image/")) {
+            if (!env.ANTHROPIC_API_KEY) {
+              return json({ error: "Reading PDFs and images needs the optional Claude upgrade. For now, copy the text and paste it into the 'Paste text' tab — that's parsed free." }, 422);
+            }
+            const mt = ct === "application/pdf" ? "application/pdf" : ct;
+            const blockType = ct === "application/pdf" ? "document" : "image";
+            visionContent = [
+              { type: blockType, source: { type: "base64", media_type: mt, data: bufToBase64(buf) } },
+              { type: "text", text: "Extract the student's action items." },
             ];
           } else {
-            const text = new TextDecoder().decode(buf).slice(0, 40000);
-            content = [{ type: "text", text: `Extract the student's action items from this document:\n\n${text}` }];
+            plainText = new TextDecoder().decode(buf).slice(0, 40000);
           }
         } else if (typeof b.text === "string" && b.text.trim()) {
-          content = [{ type: "text", text: `Extract the student's action items from this:\n\n${b.text.slice(0, 40000)}` }];
+          plainText = b.text.slice(0, 40000);
         } else {
           return json({ error: "Provide text or a documentId." }, 400);
         }
+
         try {
-          const tasks = await callClaude(env, content);
-          return json({ ok: true, tasks });
+          const raw = visionContent
+            ? await callClaudeVision(env, visionContent)
+            : await aiComplete(env, EXTRACTION_SYSTEM, [{ role: "user", content: `Extract the student's action items from this:\n\n${plainText}` }], 2048);
+          return json({ ok: true, tasks: parseTasksFromText(raw) });
+        } catch (e) {
+          return json({ error: String(e instanceof Error ? e.message : e) }, 502);
+        }
+      }
+
+      // ---- AI chat assistant (free Workers AI) ----
+      if (path === "/api/chat" && method === "POST") {
+        const b = (await request.json().catch(() => ({}))) as any;
+        const history: ChatMsg[] = Array.isArray(b.history)
+          ? b.history.filter((m: any) => m && (m.role === "user" || m.role === "assistant") && typeof m.content === "string")
+              .slice(-8).map((m: any) => ({ role: m.role, content: String(m.content).slice(0, 4000) }))
+          : [];
+        const message = typeof b.message === "string" ? b.message.trim().slice(0, 4000) : "";
+        if (!message) return json({ error: "Message required." }, 400);
+
+        // Lightweight context: open tasks + schools so advice is personal.
+        const [{ results: openTasks }, { results: schoolRows }] = await Promise.all([
+          env.DB.prepare("SELECT title, category, due_date FROM tasks WHERE user_id = ? AND status != 'done' ORDER BY COALESCE(due_date,'9999') ASC LIMIT 25").bind(user.id).all(),
+          env.DB.prepare("SELECT name, platform, app_round, deadline FROM schools WHERE user_id = ? LIMIT 25").bind(user.id).all(),
+        ]);
+        const ctx = [
+          schoolRows.length ? "Their schools: " + schoolRows.map((s: any) => `${s.name}${s.app_round ? " (" + s.app_round + ")" : ""}${s.deadline ? " due " + s.deadline : ""}`).join("; ") : "No schools added yet.",
+          openTasks.length ? "Open tasks: " + openTasks.map((t: any) => `${t.title}${t.due_date ? " (due " + t.due_date + ")" : ""}`).join("; ") : "No open tasks yet.",
+          `Today is ${new Date().toISOString().slice(0, 10)}.`,
+        ].join("\n");
+        const system = `You are UniBreeze's college-application assistant for high-school students. Be warm, concise, and practical. Help with the college process: essays and UC PIQs, activity descriptions, deadlines, what to do next, and small tasks. Use the student's context below to personalize advice. If asked something outside college admissions, gently steer back. Never invent deadlines.\n\nStudent context:\n${ctx}`;
+
+        try {
+          const reply = await aiComplete(env, system, [...history, { role: "user", content: message }], 700);
+          return json({ ok: true, reply: reply.trim() || "Sorry, I couldn't generate a response. Try rephrasing?" });
         } catch (e) {
           return json({ error: String(e instanceof Error ? e.message : e) }, 502);
         }
