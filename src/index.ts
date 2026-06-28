@@ -143,7 +143,7 @@ async function aiComplete(env: Env, system: string, messages: ChatMsg[], maxToke
     return (data.content || []).filter((b: any) => b.type === "text").map((b: any) => b.text).join("");
   }
   // Free path: Cloudflare Workers AI (no key, free daily allocation).
-  const model = env.WORKERS_AI_MODEL || "@cf/meta/llama-3.1-8b-instruct";
+  const model = env.WORKERS_AI_MODEL || "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
   const out = (await env.AI.run(model as any, {
     messages: [{ role: "system", content: system }, ...messages],
     max_tokens: maxTokens,
@@ -214,7 +214,7 @@ export default {
       // -- Temporary AI self-test (token-gated, fixed tiny prompt) --
       if (path === "/api/ai/selftest" && url.searchParams.get("k") === "ub-selftest-9f3a2") {
         try {
-          const model = env.WORKERS_AI_MODEL || "@cf/meta/llama-3.1-8b-instruct";
+          const model = env.WORKERS_AI_MODEL || "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
           const out = (await env.AI.run(model as any, { messages: [{ role: "user", content: "Reply with exactly: UNIBREEZE_AI_OK" }], max_tokens: 16 })) as any;
           return json({ ok: true, model, raw: out });
         } catch (e) {
