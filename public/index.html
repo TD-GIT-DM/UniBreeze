@@ -474,6 +474,15 @@
         <button class="btn ghost" onclick="closeModal()">Cancel</button>
         <button class="btn" id="cv_go" onclick="saveCanvas()">Connect</button>
       </div>
+      <div style="margin-top:1rem; border-top:1px solid var(--line); padding-top:.8rem">
+        <b style="font-size:.9rem">School blocks auto-connect? Upload the file instead.</b>
+        <ol style="padding-left:1.15rem; font-size:.88rem; margin:.5rem 0; line-height:1.7">
+          <li>Open your Calendar Feed link in a new browser tab — it downloads a <b>.ics</b> file.</li>
+          <li>Pick that file here 👇 and your assignments import the same way.</li>
+        </ol>
+        <input id="cv_file" type="file" accept=".ics,text/calendar" />
+        <button class="btn ghost sm" style="width:100%; margin-top:.5rem" id="cv_upload" onclick="uploadIcs()">Upload & import assignments</button>
+      </div>
       <div style="text-align:center; margin-top:1rem">
         <a href="#" class="muted" style="font-size:.8rem" onclick="toggleCvAdv(event)">Advanced: use an access token instead ▾</a>
       </div>
@@ -500,6 +509,18 @@
     let v=$('cv_ics').value.trim().replace(/^webcal:\/\//i,'https://');
     if(!v){ $('cv_err').textContent='Paste your Calendar Feed link first.'; return; }
     doCanvasConnect({ ics_url:v }, $('cv_go'));
+  }
+  async function uploadIcs(){
+    $('cv_err').textContent=''; const f=$('cv_file').files[0];
+    if(!f){ $('cv_err').textContent='Choose your .ics file first.'; return; }
+    const btn=$('cv_upload'); btn.disabled=true; btn.innerHTML='<span class="spin"></span> Importing…';
+    try{
+      const fd=new FormData(); fd.append('file',f);
+      const r=await fetch('/api/integrations/canvas/import-ics',{method:'POST',body:fd});
+      const d=await r.json(); if(!r.ok) throw new Error(d.error||'Import failed');
+      closeModal(); await refresh();
+      alert(`Imported ${d.added} assignment${d.added===1?'':'s'} from your file (${d.found} found).`);
+    }catch(e){ $('cv_err').textContent=e.message; btn.disabled=false; btn.textContent='Upload & import assignments'; }
   }
   function saveCanvasToken(){
     const base=$('cv_base').value.trim(), token=$('cv_token').value.trim();

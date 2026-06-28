@@ -233,11 +233,6 @@ async function upsertSyncedTask(env: Env, userId: number, ev: CanvasEvent, done 
   return "added";
 }
 
-// TEMP: lightweight debug logger to D1 (removed after Canvas troubleshooting).
-async function logDebug(env: Env, userId: number, detail: string): Promise<void> {
-  try { await env.DB.prepare("INSERT INTO debug_log (user_id, detail) VALUES (?, ?)").bind(userId, detail.slice(0, 800)).run(); } catch {}
-}
-
 async function syncCanvas(env: Env, userId: number, conn: any): Promise<{ added: number; updated: number; found: number }> {
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const cutoff = new Date(today.getTime() - 2 * 86400000); // include last 2 days
@@ -263,37 +258,17 @@ async function syncCanvas(env: Env, userId: number, conn: any): Promise<{ added:
     }
   } else if (conn.ics_url) {
     const url = conn.ics_url.replace(/^webcal:\/\//i, "https://");
-    const CHROME = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
-    // TEMP DIAGNOSTIC: try several request styles, log each to debug_log, use the first that works.
-    const attempts: { label: string; headers: Record<string, string> }[] = [
-      { label: "full-browser", headers: {
-        "User-Agent": CHROME,
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,text/calendar,*/*;q=0.8",
+    const res = await fetch(url, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        "Accept": "text/calendar, text/html;q=0.9, */*;q=0.8",
         "Accept-Language": "en-US,en;q=0.9",
-        "Upgrade-Insecure-Requests": "1",
-        "Sec-Fetch-Dest": "document",
-        "Sec-Fetch-Mode": "navigate",
-        "Sec-Fetch-Site": "none",
-        "Sec-Fetch-User": "?1",
-        "Sec-Ch-Ua": "\"Chromium\";v=\"124\", \"Google Chrome\";v=\"124\", \"Not-A.Brand\";v=\"99\"",
-        "Sec-Ch-Ua-Mobile": "?0",
-        "Sec-Ch-Ua-Platform": "\"macOS\"",
-      } },
-      { label: "chrome+accept", headers: { "User-Agent": CHROME, "Accept": "text/calendar, text/html;q=0.9, */*;q=0.8", "Accept-Language": "en-US,en;q=0.9" } },
-      { label: "curl", headers: { "User-Agent": "curl/8.4.0", "Accept": "*/*" } },
-    ];
-    let text = "";
-    for (const a of attempts) {
-      try {
-        const r = await fetch(url, { headers: a.headers });
-        const body = await r.text();
-        await logDebug(env, userId, `${a.label}: HTTP ${r.status} ct=${r.headers.get("content-type")} len=${body.length} snip=${body.replace(/\s+/g, " ").slice(0, 100)}`);
-        if (r.ok && body.includes("BEGIN:VCALENDAR")) { text = body; await logDebug(env, userId, `WORKING METHOD: ${a.label}`); break; }
-      } catch (e) {
-        await logDebug(env, userId, `${a.label}: THREW ${String(e).slice(0, 120)}`);
-      }
+      },
+    });
+    const text = res.ok ? await res.text() : "";
+    if (!text.includes("BEGIN:VCALENDAR")) {
+      throw new Error(`Your school's Canvas blocks automatic feed access (HTTP ${res.status}). Use the "Upload .ics file" option instead — your browser can download the feed even though our server can't.`);
     }
-    if (!text) throw new Error("Could not fetch the calendar feed by any method — diagnostics logged, checking now.");
     for (const ev of parseICS(text)) {
       if (ev.due >= cutoff.toISOString().slice(0, 10)) events.push({ ev, done: false });
     }
@@ -536,6 +511,29 @@ export default {
       if (path === "/api/integrations/canvas" && method === "DELETE") {
         await env.DB.prepare("DELETE FROM integrations WHERE user_id = ? AND type = 'canvas'").bind(user.id).run();
         return json({ ok: true });
+      }
+      if (path === "/api/integrations/canvas/import-ics" && method === "POST") {
+        const form = await request.formData();
+        const entry = form.get("file");
+        let icsText = "";
+        if (entry && typeof entry !== "string" && typeof (entry as any).text === "function") {
+          icsText = await (entry as File).text();
+        } else if (typeof form.get("text") === "string") {
+          icsText = form.get("text") as string;
+        }
+        if (!icsText.includes("BEGIN:VCALENDAR")) {
+          return json({ error: "That doesn't look like a Canvas .ics calendar file. Open your Calendar Feed link in a browser, save the file, and upload it here." }, 400);
+        }
+        const today = new Date(); today.setHours(0, 0, 0, 0);
+        const cutoff = new Date(today.getTime() - 2 * 86400000).toISOString().slice(0, 10);
+        let added = 0, updated = 0, found = 0;
+        for (const ev of parseICS(icsText)) {
+          if (ev.due < cutoff) continue;
+          found++;
+          const r = await upsertSyncedTask(env, user.id, ev, false);
+          if (r === "added") added++; else updated++;
+        }
+        return json({ ok: true, added, updated, found });
       }
       if (path === "/api/integrations/canvas/sync" && method === "POST") {
         const conn = await env.DB.prepare("SELECT base_url, ics_url, token FROM integrations WHERE user_id = ? AND type = 'canvas'").bind(user.id).first<any>();
