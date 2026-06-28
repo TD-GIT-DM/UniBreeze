@@ -315,9 +315,9 @@ export default {
         const q = (url.searchParams.get("q") || "").toLowerCase();
         const out: any = {};
         for (const [name, u] of [
-          ["pss2019", `https://educationdata.urban.org/api/v1/schools/pss/directory/2019/?fips=${fips}`],
-          ["pss2017", `https://educationdata.urban.org/api/v1/schools/pss/directory/2017/?fips=${fips}`],
-          ["pss2021", `https://educationdata.urban.org/api/v1/schools/pss/2021/?fips=${fips}`],
+          ["pss2019", `https://educationdata.urban.org/api/v1/schools/pss/2019/?fips=${fips}`],
+          ["pss2017", `https://educationdata.urban.org/api/v1/schools/pss/2017/?fips=${fips}`],
+          ["pss2015", `https://educationdata.urban.org/api/v1/schools/pss/2015/?fips=${fips}`],
         ] as const) {
           try {
             const r = await fetch(u);
