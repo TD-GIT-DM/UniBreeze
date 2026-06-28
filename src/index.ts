@@ -195,6 +195,96 @@ function bufToBase64(buf: ArrayBuffer): string {
   return btoa(binary);
 }
 
+// ---- Canvas LMS integration -------------------------------------------------
+
+interface CanvasEvent { summary: string; due: string; uid: string; url: string; }
+
+// Unfold RFC5545 line continuations and pull assignment-like events.
+function parseICS(text: string): CanvasEvent[] {
+  const unfolded = text.replace(/\r\n/g, "\n").replace(/\n[ \t]/g, "");
+  const out: CanvasEvent[] = [];
+  const blocks = unfolded.split("BEGIN:VEVENT").slice(1);
+  for (const raw of blocks) {
+    const body = "\n" + raw.split("END:VEVENT")[0];
+    const get = (k: string): string => {
+      const m = body.match(new RegExp("\\n" + k + "[^:\\n]*:(.*)"));
+      return m ? m[1].trim().replace(/\\,/g, ",").replace(/\\n/g, " ").replace(/\\;/g, ";") : "";
+    };
+    const summary = get("SUMMARY");
+    const dtRaw = get("DTSTART") || get("DTEND") || get("DUE");
+    const dm = dtRaw.match(/(\d{4})(\d{2})(\d{2})/);
+    const due = dm ? `${dm[1]}-${dm[2]}-${dm[3]}` : "";
+    if (summary && due) out.push({ summary: summary.slice(0, 300), due, uid: get("UID"), url: get("URL") });
+  }
+  return out;
+}
+
+async function upsertSyncedTask(env: Env, userId: number, ev: CanvasEvent, done = false): Promise<"added" | "updated"> {
+  const extId = "canvas:" + (ev.uid || `${ev.summary}|${ev.due}`);
+  const existing = await env.DB.prepare("SELECT id FROM tasks WHERE user_id = ? AND ext_id = ?").bind(userId, extId).first<any>();
+  if (existing) {
+    await env.DB.prepare("UPDATE tasks SET title = ?, due_date = ?, source_url = ?, updated_at = ? WHERE id = ?")
+      .bind(ev.summary, ev.due, ev.url || null, new Date().toISOString(), existing.id).run();
+    return "updated";
+  }
+  await env.DB.prepare(
+    "INSERT INTO tasks (user_id, title, category, due_date, status, priority, source, source_url, ext_id) VALUES (?, ?, ?, ?, ?, ?, 'canvas', ?, ?)",
+  ).bind(userId, ev.summary, "form", ev.due, done ? "done" : "todo", 2, ev.url || null, extId).run();
+  return "added";
+}
+
+async function syncCanvas(env: Env, userId: number, conn: any): Promise<{ added: number; updated: number; found: number }> {
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const cutoff = new Date(today.getTime() - 2 * 86400000); // include last 2 days
+  let events: { ev: CanvasEvent; done: boolean }[] = [];
+
+  if (conn.token && conn.base_url) {
+    // Canvas Planner API — upcoming assignments with completion status.
+    const start = new Date(cutoff).toISOString().slice(0, 10);
+    const res = await fetch(`${conn.base_url}/api/v1/planner/items?start_date=${start}&per_page=50`, {
+      headers: { Authorization: `Bearer ${conn.token}` },
+    });
+    if (!res.ok) throw new Error(`Canvas API error ${res.status}. Check the domain and token.`);
+    const items = (await res.json()) as any[];
+    for (const it of items || []) {
+      const p = it.plannable || {};
+      const title = p.title || it.plannable_type || "Canvas item";
+      const date = (it.plannable_date || p.due_at || "").slice(0, 10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
+      events.push({
+        ev: { summary: String(title).slice(0, 300), due: date, uid: "planner:" + (it.plannable_id || title), url: it.html_url ? conn.base_url + it.html_url : "" },
+        done: Boolean(it.planner_override && it.planner_override.marked_complete) || Boolean(it.submissions && it.submissions.submitted),
+      });
+    }
+  } else if (conn.ics_url) {
+    const res = await fetch(conn.ics_url, { headers: { "user-agent": "UniBreeze/1.0" } });
+    if (!res.ok) throw new Error(`Could not fetch the calendar feed (HTTP ${res.status}). Re-copy the feed URL from Canvas.`);
+    const text = await res.text();
+    if (!text.includes("BEGIN:VCALENDAR")) throw new Error("That URL didn't return a Canvas calendar feed. Use the .ics link from Canvas → Calendar → Calendar Feed.");
+    for (const ev of parseICS(text)) {
+      if (ev.due >= cutoff.toISOString().slice(0, 10)) events.push({ ev, done: false });
+    }
+  } else {
+    throw new Error("No Canvas connection configured.");
+  }
+
+  let added = 0, updated = 0;
+  for (const { ev, done } of events.slice(0, 200)) {
+    const r = await upsertSyncedTask(env, userId, ev, done);
+    if (r === "added") added++; else updated++;
+  }
+  await env.DB.prepare("UPDATE integrations SET last_synced = ? WHERE user_id = ? AND type = 'canvas'")
+    .bind(new Date().toISOString(), userId).run();
+  return { added, updated, found: events.length };
+}
+
+function normalizeBaseUrl(v: any): string | null {
+  if (typeof v !== "string" || !v.trim()) return null;
+  let s = v.trim().replace(/\/+$/, "");
+  if (!/^https?:\/\//.test(s)) s = "https://" + s;
+  try { return new URL(s).origin; } catch { return null; }
+}
+
 // ---- router -----------------------------------------------------------------
 
 export default {
@@ -371,6 +461,53 @@ export default {
             "content-disposition": `inline; filename="${doc.filename.replace(/"/g, "")}"`,
           },
         });
+      }
+
+      // ---- Canvas integration ----
+      if (path === "/api/integrations/canvas" && method === "GET") {
+        const c = await env.DB.prepare("SELECT base_url, ics_url, token, last_synced FROM integrations WHERE user_id = ? AND type = 'canvas'").bind(user.id).first<any>();
+        return json({
+          connected: Boolean(c),
+          method: c ? (c.token ? "token" : "feed") : null,
+          base_url: c?.base_url ?? null,
+          last_synced: c?.last_synced ?? null,
+        });
+      }
+      if (path === "/api/integrations/canvas" && method === "POST") {
+        const b = (await request.json().catch(() => ({}))) as any;
+        const ics = typeof b.ics_url === "string" && b.ics_url.trim() ? b.ics_url.trim() : null;
+        const base = normalizeBaseUrl(b.base_url);
+        const token = typeof b.token === "string" && b.token.trim() ? b.token.trim() : null;
+        if (!ics && !(base && token)) {
+          return json({ error: "Provide a Calendar Feed URL, or a Canvas domain plus an access token." }, 400);
+        }
+        if (ics && !/^https?:\/\//.test(ics)) return json({ error: "Feed URL must start with http(s)://" }, 400);
+        await env.DB.prepare(
+          `INSERT INTO integrations (user_id, type, base_url, ics_url, token) VALUES (?, 'canvas', ?, ?, ?)
+           ON CONFLICT(user_id, type) DO UPDATE SET base_url = excluded.base_url, ics_url = excluded.ics_url, token = excluded.token`,
+        ).bind(user.id, base, ics, token).run();
+        // Sync immediately so the user sees results.
+        try {
+          const conn = { base_url: base, ics_url: ics, token };
+          const result = await syncCanvas(env, user.id, conn);
+          return json({ ok: true, ...result });
+        } catch (e) {
+          return json({ ok: true, warning: String(e instanceof Error ? e.message : e), added: 0, updated: 0 });
+        }
+      }
+      if (path === "/api/integrations/canvas" && method === "DELETE") {
+        await env.DB.prepare("DELETE FROM integrations WHERE user_id = ? AND type = 'canvas'").bind(user.id).run();
+        return json({ ok: true });
+      }
+      if (path === "/api/integrations/canvas/sync" && method === "POST") {
+        const conn = await env.DB.prepare("SELECT base_url, ics_url, token FROM integrations WHERE user_id = ? AND type = 'canvas'").bind(user.id).first<any>();
+        if (!conn) return json({ error: "Canvas isn't connected yet." }, 400);
+        try {
+          const result = await syncCanvas(env, user.id, conn);
+          return json({ ok: true, ...result });
+        } catch (e) {
+          return json({ error: String(e instanceof Error ? e.message : e) }, 502);
+        }
       }
 
       // ---- AI worksheet import ----

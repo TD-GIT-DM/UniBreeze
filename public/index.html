@@ -177,6 +177,9 @@
           <h2 class="sec" style="margin-top:1.2rem">Document vault</h2>
           <div id="docList"></div>
           <button class="btn ghost sm" style="width:100%; margin-top:.4rem" onclick="openImport()">Upload a document</button>
+
+          <h2 class="sec" style="margin-top:1.2rem">📚 Canvas</h2>
+          <div id="canvasBox"></div>
         </div>
         <div>
           <div class="toolbar">
@@ -253,6 +256,7 @@
     const [s,t,d] = await Promise.all([api('/api/schools'), api('/api/tasks'), api('/api/documents')]);
     S.schools=s.schools; S.tasks=t.tasks; S.docs=d.documents;
     render();
+    loadCanvas();
   }
 
   // ---------- render ----------
@@ -311,7 +315,7 @@
           <span>${catLabel(t.category)}</span>
           ${sc?`<span>🏫 ${esc(sc.name)}</span>`:''}
           ${t.due_date?`<span class="${dueClass(t.due_date)}">📅 ${fmtDate(t.due_date)}</span>`:''}
-          ${t.source && t.source.startsWith('import')?`<span class="muted">imported</span>`:''}
+          ${t.source==='canvas'?`<span class="pill">📚 Canvas</span>`:t.source && t.source.startsWith('import')?`<span class="muted">imported</span>`:''}
         </div>
         ${t.details?`<div class="t-details">${esc(t.details)}</div>`:''}
         ${t.tips?`<div class="tip"><b>Tip:</b> ${esc(t.tips)}</div>`:''}
@@ -436,6 +440,75 @@
   async function parseDoc(id){ openImport(); impTab('file'); $('m_err').textContent='Analyzing saved document…';
     try{ const res=await api('/api/import/parse',{method:'POST',body:JSON.stringify({documentId:id})}); $('m_err').textContent=''; renderProposed(res.tasks||[]); }
     catch(e){ $('m_err').textContent=e.message; } }
+
+  // ---------- canvas ----------
+  async function loadCanvas(){
+    let c; try{ c = await api('/api/integrations/canvas'); }catch{ return; }
+    const box=$('canvasBox'); if(!box) return;
+    if(!c.connected){
+      box.innerHTML = `<div class="muted" style="font-size:.82rem; margin-bottom:.4rem">Pull your assignment deadlines straight from Canvas.</div>
+        <button class="btn ghost sm" style="width:100%" onclick="openCanvas()">Connect Canvas</button>`;
+    } else {
+      const when = c.last_synced ? new Date(c.last_synced).toLocaleString(undefined,{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}) : 'never';
+      box.innerHTML = `<div class="school" style="cursor:default">
+          <div class="nm">✅ Connected <span class="pill">${c.method==='token'?'token':'feed'}</span></div>
+          <div class="meta"><span>Last synced: ${esc(when)}</span></div>
+        </div>
+        <div class="row" style="margin-top:.4rem">
+          <button class="btn sm grow" id="canvasSyncBtn" onclick="syncCanvasNow()">Sync now</button>
+          <button class="btn danger sm" onclick="disconnectCanvas()">Disconnect</button>
+        </div>`;
+    }
+  }
+  function openCanvas(){
+    modal(`<h3>📚 Connect Canvas</h3>
+      <p class="muted" style="margin-top:-.4rem">Your assignment due dates flow into your checklist. Pick the easy way (Calendar Feed) or the token method.</p>
+      <div class="seg" style="margin-bottom:.6rem">
+        <button id="cvTabFeed" class="on" onclick="cvTab('feed')">Calendar Feed (easy)</button>
+        <button id="cvTabToken" onclick="cvTab('token')">Access token</button>
+      </div>
+      <div id="cvFeed">
+        <label>Canvas Calendar Feed URL</label>
+        <input id="cv_ics" placeholder="https://yourschool.instructure.com/feeds/calendars/user_xxx.ics" />
+        <div class="tip" style="margin-top:.5rem">In Canvas: <b>Calendar → Calendar Feed</b> (bottom-right) → copy the link. It's read-only and can't change anything in Canvas.</div>
+      </div>
+      <div id="cvToken" class="hidden">
+        <label>Canvas web address</label>
+        <input id="cv_base" placeholder="yourschool.instructure.com" />
+        <label>Access token</label>
+        <input id="cv_token" placeholder="paste token" />
+        <div class="tip" style="margin-top:.5rem">In Canvas: <b>Account → Settings → New Access Token</b>. (Some schools disable this — use the feed instead.)</div>
+      </div>
+      <div class="err" id="cv_err"></div>
+      <div class="row" style="justify-content:flex-end; margin-top:1rem">
+        <button class="btn ghost" onclick="closeModal()">Cancel</button>
+        <button class="btn" id="cv_go" onclick="saveCanvas()">Connect & sync</button>
+      </div>`);
+  }
+  let cvMode='feed';
+  function cvTab(m){ cvMode=m; $('cvTabFeed').classList.toggle('on',m==='feed'); $('cvTabToken').classList.toggle('on',m==='token');
+    $('cvFeed').classList.toggle('hidden',m!=='feed'); $('cvToken').classList.toggle('hidden',m!=='token'); }
+  async function saveCanvas(){
+    $('cv_err').textContent=''; const go=$('cv_go'); go.disabled=true; go.innerHTML='<span class="spin"></span> Connecting…';
+    const body = cvMode==='feed' ? { ics_url: $('cv_ics').value.trim() } : { base_url: $('cv_base').value.trim(), token: $('cv_token').value.trim() };
+    try{
+      const r = await api('/api/integrations/canvas',{method:'POST',body:JSON.stringify(body)});
+      closeModal(); await refresh();
+      if(r.warning) alert('Connected, but sync had an issue:\n'+r.warning);
+      else alert(`Canvas connected! Imported ${r.added} assignment${r.added===1?'':'s'} (${r.found} found).`);
+    }catch(e){ $('cv_err').textContent=e.message; }
+    finally{ go.disabled=false; go.textContent='Connect & sync'; }
+  }
+  async function syncCanvasNow(){
+    const btn=$('canvasSyncBtn'); if(btn){ btn.disabled=true; btn.innerHTML='<span class="spin"></span> Syncing…'; }
+    try{ const r=await api('/api/integrations/canvas/sync',{method:'POST'}); await refresh();
+      alert(`Synced: ${r.added} new, ${r.updated} updated.`);
+    }catch(e){ alert('Sync failed: '+e.message); if(btn){ btn.disabled=false; btn.textContent='Sync now'; } }
+  }
+  async function disconnectCanvas(){
+    if(!confirm('Disconnect Canvas? Your imported tasks stay; they just stop syncing.')) return;
+    await api('/api/integrations/canvas',{method:'DELETE'}); await loadCanvas();
+  }
 
   // ---------- deadline tracker ----------
   // Standard U.S. college-application milestones. firm=fixed/widely-standard;

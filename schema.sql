@@ -50,8 +50,9 @@ CREATE TABLE IF NOT EXISTS tasks (
   status       TEXT NOT NULL DEFAULT 'todo', -- todo | in_progress | done
   priority     INTEGER NOT NULL DEFAULT 2,    -- 1 high, 2 normal, 3 low
   tips         TEXT,                     -- AI-generated tips / how-to
-  source       TEXT NOT NULL DEFAULT 'manual', -- manual | import:<filename>
+  source       TEXT NOT NULL DEFAULT 'manual', -- manual | import:<filename> | canvas
   source_url   TEXT,
+  ext_id       TEXT,                     -- external id for sync dedupe (e.g. canvas:<uid>)
   created_at   TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at   TEXT NOT NULL DEFAULT (datetime('now')),
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
@@ -73,3 +74,18 @@ CREATE TABLE IF NOT EXISTS documents (
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_documents_user ON documents(user_id);
+
+-- External integrations (e.g. Canvas LMS) ----------------------------------
+CREATE TABLE IF NOT EXISTS integrations (
+  user_id      INTEGER NOT NULL,
+  type         TEXT NOT NULL,            -- 'canvas'
+  base_url     TEXT,                     -- e.g. https://school.instructure.com
+  ics_url      TEXT,                     -- private calendar feed (read-only)
+  token        TEXT,                     -- access token (optional, richer)
+  last_synced  TEXT,
+  created_at   TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (user_id, type),
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_tasks_extid ON tasks(user_id, ext_id);
