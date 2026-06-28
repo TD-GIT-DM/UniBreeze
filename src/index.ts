@@ -312,25 +312,14 @@ export default {
       // -- TEMP probe: test the Urban Institute Education Data API from the Worker --
       if (path === "/api/_probe/edu" && url.searchParams.get("k") === "ub-probe-7x") {
         const fips = url.searchParams.get("fips") || "6";
-        const q = (url.searchParams.get("q") || "").toLowerCase();
-        const out: any = {};
-        for (const [name, u] of [
-          ["hs_grade12", `https://educationdata.urban.org/api/v1/schools/ccd/directory/2022/?fips=${fips}&highest_grade_offered=12`],
-          ["hs_level", `https://educationdata.urban.org/api/v1/schools/ccd/directory/2022/?fips=${fips}&school_level=3`],
-        ] as const) {
-          try {
-            const r = await fetch(u);
-            const ct = r.headers.get("content-type") || "";
-            const bodyText = await r.text();
-            if (!r.ok || !ct.includes("json")) { out[name] = { status: r.status, ct, snip: bodyText.replace(/\s+/g, " ").slice(0, 400) }; continue; }
-            const d: any = JSON.parse(bodyText);
-            const results = d.results || [];
-            const nameKey = results[0] ? Object.keys(results[0]).find((k) => k.includes("name")) : null;
-            const matches = q && nameKey ? results.filter((x: any) => String(x[nameKey] || "").toLowerCase().includes(q)).slice(0, 5).map((x: any) => x[nameKey]) : [];
-            out[name] = { status: r.status, count: d.count, page_size: results.length, fields: results[0] ? Object.keys(results[0]) : [], keys: Object.keys(d).slice(0, 20), sampleNames: results.slice(0, 3).map((x: any) => nameKey ? x[nameKey] : null), matches };
-          } catch (e) { out[name] = { error: String(e).slice(0, 160) }; }
-        }
-        return json(out);
+        const r = await fetch(`https://educationdata.urban.org/api/v1/schools/ccd/directory/2022/?fips=${fips}`);
+        const d: any = await r.json();
+        const results = (d.results || []).filter((x: any) => Number(x.highest_grade_offered) === 12);
+        const sample = results.slice(0, 5).map((x: any) => ({
+          name: x.school_name, city: x.city_location, level: x.school_level, hi: x.highest_grade_offered,
+          lo: x.lowest_grade_offered, type: x.school_type, status: x.school_status, enr: x.enrollment, charter: x.charter,
+        }));
+        return json({ total: d.count, grade12_count: results.length, sample });
       }
       // ---- Auth (public) ----
       if (path === "/api/auth/signup" && method === "POST") {
