@@ -99,6 +99,15 @@
     .toolbar { display:flex; gap:.5rem; flex-wrap:wrap; margin-bottom:1rem; align-items:center; }
     .grow { flex:1; }
 
+    /* Deadline tracker */
+    .deadlines { display:flex; gap:.6rem; overflow-x:auto; padding-bottom:.4rem; margin-bottom:1.3rem; }
+    .dl-card { min-width:158px; background:var(--card); border:1px solid var(--line); border-radius:12px; padding:.6rem .8rem; }
+    .dl-card .d-label { font-size:.76rem; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .dl-card .d-date { font-weight:700; margin:.15rem 0; font-size:.92rem; }
+    .dl-card .d-count { font-size:1.45rem; font-weight:800; line-height:1; }
+    .dl-card .d-count small { font-size:.68rem; font-weight:600; color:var(--muted); }
+    .d-soon { color:var(--warn); } .d-urgent { color:var(--danger); }
+
     /* Chat assistant */
     .chat-fab { position:fixed; right:1.1rem; bottom:1.1rem; z-index:15; background:var(--brand); color:#fff; padding:.7rem 1.1rem; border-radius:999px; box-shadow:var(--shadow); font-weight:600; }
     .chat-fab:hover { background:var(--brand-d); }
@@ -155,6 +164,8 @@
       </div>
     </header>
     <main class="wrap">
+      <h2 class="sec">Key application deadlines <span class="muted" style="text-transform:none; letter-spacing:0">· typical U.S. milestones — <span style="color:var(--warn)">*</span> dates vary by school, verify each</span></h2>
+      <div class="deadlines" id="deadlines"></div>
       <div class="stats" id="stats"></div>
       <div class="grid">
         <div>
@@ -426,6 +437,40 @@
     try{ const res=await api('/api/import/parse',{method:'POST',body:JSON.stringify({documentId:id})}); $('m_err').textContent=''; renderProposed(res.tasks||[]); }
     catch(e){ $('m_err').textContent=e.message; } }
 
+  // ---------- deadline tracker ----------
+  // Standard U.S. college-application milestones. firm=fixed/widely-standard;
+  // others vary by school (flagged with *). Year is computed to the next cycle.
+  const MILESTONES = [
+    { m:8,  d:1,  label:'Common App opens',           firm:true  },
+    { m:10, d:1,  label:'FAFSA / CSS Profile opens',  firm:false },
+    { m:11, d:1,  label:'Early Decision / Early Action', firm:false },
+    { m:11, d:30, label:'UC & Cal State deadline',     firm:true  },
+    { m:1,  d:1,  label:'Regular Decision',            firm:false },
+    { m:5,  d:1,  label:'Decision Day (commit)',       firm:true  },
+  ];
+  function nextOccur(m,d){
+    const today=new Date(); today.setHours(0,0,0,0);
+    let dt=new Date(today.getFullYear(), m-1, d);
+    if(dt<today) dt=new Date(today.getFullYear()+1, m-1, d);
+    return dt;
+  }
+  function renderDeadlines(){
+    const today=new Date(); today.setHours(0,0,0,0);
+    const items=MILESTONES.map(ms=>{
+      const dt=nextOccur(ms.m,ms.d);
+      return {...ms, dt, days:Math.round((dt-today)/86400000)};
+    }).sort((a,b)=>a.days-b.days);
+    const fmt=(dt)=>dt.toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'});
+    $('deadlines').innerHTML = items.map(it=>{
+      const cls = it.days<=14?'d-urgent':it.days<=45?'d-soon':'';
+      return `<div class="dl-card">
+        <div class="d-label">${esc(it.label)}${it.firm?'':' <span style="color:var(--warn)">*</span>'}</div>
+        <div class="d-date">${fmt(it.dt)}</div>
+        <div class="d-count ${cls}">${it.days}<small> days</small></div>
+      </div>`;
+    }).join('');
+  }
+
   // ---------- chat assistant ----------
   let chatHistory=[], chatOpen=false, chatBusy=false;
   function toggleChat(){
@@ -463,7 +508,7 @@
   // ---------- boot ----------
   async function boot(){
     const me = await api('/api/auth/me').catch(()=>({user:null}));
-    if(me.user){ S.user=me.user; $('authView').classList.add('hidden'); $('appView').classList.remove('hidden'); await refresh(); }
+    if(me.user){ S.user=me.user; $('authView').classList.add('hidden'); $('appView').classList.remove('hidden'); renderDeadlines(); setInterval(renderDeadlines, 60000); await refresh(); }
     else { $('authView').classList.remove('hidden'); $('appView').classList.add('hidden'); }
   }
   boot();
