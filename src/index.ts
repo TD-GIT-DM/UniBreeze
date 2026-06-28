@@ -214,10 +214,11 @@ export default {
       // -- Temporary AI self-test (token-gated, fixed tiny prompt) --
       if (path === "/api/ai/selftest" && url.searchParams.get("k") === "ub-selftest-9f3a2") {
         try {
-          const reply = await aiComplete(env, "You are a test. Reply with exactly: UNIBREEZE_AI_OK", [{ role: "user", content: "ping" }], 16);
-          return json({ ok: true, provider: env.ANTHROPIC_API_KEY ? "claude" : "workers-ai", reply });
+          const model = env.WORKERS_AI_MODEL || "@cf/meta/llama-3.1-8b-instruct";
+          const out = (await env.AI.run(model as any, { messages: [{ role: "user", content: "Reply with exactly: UNIBREEZE_AI_OK" }], max_tokens: 16 })) as any;
+          return json({ ok: true, model, raw: out });
         } catch (e) {
-          return json({ ok: false, error: String(e instanceof Error ? e.message : e) }, 502);
+          return json({ ok: false, error: String(e instanceof Error ? e.message + " | " + e.stack : e) }, 200);
         }
       }
 
