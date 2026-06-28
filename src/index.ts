@@ -308,6 +308,29 @@ export default {
       if (path === "/api/health") {
         return json({ ok: true, service: "unibreeze", ai: true, ai_provider: env.ANTHROPIC_API_KEY ? "claude" : "workers-ai", time: new Date().toISOString() });
       }
+
+      // -- TEMP probe: test the Urban Institute Education Data API from the Worker --
+      if (path === "/api/_probe/edu" && url.searchParams.get("k") === "ub-probe-7x") {
+        const fips = url.searchParams.get("fips") || "6";
+        const q = (url.searchParams.get("q") || "").toLowerCase();
+        const out: any = {};
+        for (const [name, u] of [
+          ["ccd", `https://educationdata.urban.org/api/v1/schools/ccd/directory/2022/?fips=${fips}`],
+          ["pss", `https://educationdata.urban.org/api/v1/schools/pss/directory/2021/?fips=${fips}`],
+        ] as const) {
+          try {
+            const r = await fetch(u);
+            const ct = r.headers.get("content-type") || "";
+            if (!r.ok || !ct.includes("json")) { out[name] = { status: r.status, ct, snip: (await r.text()).slice(0, 120) }; continue; }
+            const d: any = await r.json();
+            const results = d.results || [];
+            const nameKey = results[0] ? Object.keys(results[0]).find((k) => k.includes("name")) : null;
+            const matches = q && nameKey ? results.filter((x: any) => String(x[nameKey] || "").toLowerCase().includes(q)).slice(0, 5).map((x: any) => x[nameKey]) : [];
+            out[name] = { status: r.status, count: d.count, page_size: results.length, fields: results[0] ? Object.keys(results[0]) : [], sampleNames: results.slice(0, 3).map((x: any) => nameKey ? x[nameKey] : null), matches };
+          } catch (e) { out[name] = { error: String(e).slice(0, 160) }; }
+        }
+        return json(out);
+      }
       // ---- Auth (public) ----
       if (path === "/api/auth/signup" && method === "POST") {
         const b = (await request.json().catch(() => ({}))) as any;
