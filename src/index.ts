@@ -489,6 +489,9 @@ export default {
           return json({ error: "Provide a Calendar Feed URL, or a Canvas domain plus an access token." }, 400);
         }
         if (ics && !/^https?:\/\//.test(ics)) return json({ error: "Feed URL must start with http(s)://" }, 400);
+        if (ics && !/\/feeds\/calendars\//i.test(ics)) {
+          return json({ error: "That looks like your Canvas calendar PAGE, not the feed link. In Canvas → Calendar, scroll to the very bottom of the right sidebar and click the \"Calendar Feed\" button — copy that link (it contains /feeds/calendars/ and ends in .ics)." }, 400);
+        }
         await env.DB.prepare(
           `INSERT INTO integrations (user_id, type, base_url, ics_url, token) VALUES (?, 'canvas', ?, ?, ?)
            ON CONFLICT(user_id, type) DO UPDATE SET base_url = excluded.base_url, ics_url = excluded.ics_url, token = excluded.token`,
