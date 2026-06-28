@@ -266,11 +266,21 @@ async function syncCanvas(env: Env, userId: number, conn: any): Promise<{ added:
     const CHROME = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
     // TEMP DIAGNOSTIC: try several request styles, log each to debug_log, use the first that works.
     const attempts: { label: string; headers: Record<string, string> }[] = [
+      { label: "full-browser", headers: {
+        "User-Agent": CHROME,
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,text/calendar,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Upgrade-Insecure-Requests": "1",
+        "Sec-Fetch-Dest": "document",
+        "Sec-Fetch-Mode": "navigate",
+        "Sec-Fetch-Site": "none",
+        "Sec-Fetch-User": "?1",
+        "Sec-Ch-Ua": "\"Chromium\";v=\"124\", \"Google Chrome\";v=\"124\", \"Not-A.Brand\";v=\"99\"",
+        "Sec-Ch-Ua-Mobile": "?0",
+        "Sec-Ch-Ua-Platform": "\"macOS\"",
+      } },
       { label: "chrome+accept", headers: { "User-Agent": CHROME, "Accept": "text/calendar, text/html;q=0.9, */*;q=0.8", "Accept-Language": "en-US,en;q=0.9" } },
-      { label: "chrome-only", headers: { "User-Agent": CHROME } },
       { label: "curl", headers: { "User-Agent": "curl/8.4.0", "Accept": "*/*" } },
-      { label: "accept-only", headers: { "Accept": "text/calendar" } },
-      { label: "bare", headers: {} },
     ];
     let text = "";
     for (const a of attempts) {
