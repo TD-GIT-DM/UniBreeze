@@ -259,9 +259,16 @@ async function syncCanvas(env: Env, userId: number, conn: any): Promise<{ added:
   } else if (conn.ics_url) {
     const url = conn.ics_url.replace(/^webcal:\/\//i, "https://");
     const res = await fetch(url, {
-      headers: { "user-agent": "Mozilla/5.0 (compatible; UniBreeze/1.0)", "accept": "text/calendar, text/plain, */*" },
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        "Accept": "text/calendar, text/html;q=0.9, */*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
+      },
     });
-    if (!res.ok) throw new Error(`Could not fetch the calendar feed (HTTP ${res.status}). Re-copy the feed URL from Canvas.`);
+    if (!res.ok) {
+      const snip = (await res.text().catch(() => "")).replace(/\s+/g, " ").slice(0, 140);
+      throw new Error(`Could not fetch the calendar feed (HTTP ${res.status}).${snip ? " Canvas said: " + snip : ""}`);
+    }
     const text = await res.text();
     if (!text.includes("BEGIN:VCALENDAR")) {
       throw new Error(`That URL didn't return a Canvas calendar feed (got ${res.headers.get("content-type") || "unknown"}). Use the .ics link from Canvas → Calendar → Calendar Feed.`);
