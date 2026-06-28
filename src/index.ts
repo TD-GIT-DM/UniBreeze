@@ -309,18 +309,6 @@ export default {
         return json({ ok: true, service: "unibreeze", ai: true, ai_provider: env.ANTHROPIC_API_KEY ? "claude" : "workers-ai", time: new Date().toISOString() });
       }
 
-      // -- TEMP probe: test the Urban Institute Education Data API from the Worker --
-      if (path === "/api/_probe/edu" && url.searchParams.get("k") === "ub-probe-7x") {
-        const fips = url.searchParams.get("fips") || "6";
-        const r = await fetch(`https://educationdata.urban.org/api/v1/schools/ccd/directory/2022/?fips=${fips}`);
-        const d: any = await r.json();
-        const results = (d.results || []).filter((x: any) => Number(x.highest_grade_offered) === 12);
-        const sample = results.slice(0, 5).map((x: any) => ({
-          name: x.school_name, city: x.city_location, level: x.school_level, hi: x.highest_grade_offered,
-          lo: x.lowest_grade_offered, type: x.school_type, status: x.school_status, enr: x.enrollment, charter: x.charter,
-        }));
-        return json({ total: d.count, grade12_count: results.length, sample });
-      }
       // ---- Auth (public) ----
       if (path === "/api/auth/signup" && method === "POST") {
         const b = (await request.json().catch(() => ({}))) as any;
@@ -364,6 +352,31 @@ export default {
       const user = await getUser(request, env);
       if (path === "/api/auth/me") return user ? json({ user }) : json({ user: null }, 200);
       if (!user) return json({ error: "Not authenticated." }, 401);
+
+      // ---- School directory lookup (real US high schools by state) ----
+      if (path === "/api/schools/lookup" && method === "GET") {
+        const fips = (url.searchParams.get("state") || "").replace(/[^0-9]/g, "");
+        if (!fips) return json({ error: "state required" }, 400);
+        try {
+          const upstream = `https://educationdata.urban.org/api/v1/schools/ccd/directory/2022/?fips=${fips}`;
+          const r = await fetch(upstream, { cf: { cacheTtl: 86400, cacheEverything: true } } as any);
+          if (!r.ok) return json({ error: "Could not load schools right now." }, 502);
+          const d: any = await r.json();
+          const schools = (d.results || [])
+            .filter((x: any) => Number(x.highest_grade_offered) === 12 && Number(x.school_status) === 1 && x.school_name)
+            .map((x: any) => ({
+              name: String(x.school_name),
+              city: x.city_location || "",
+              enrollment: Number.isFinite(x.enrollment) && x.enrollment > 0 ? x.enrollment : null,
+              charter: Number(x.charter) === 1,
+              low: x.lowest_grade_offered, high: x.highest_grade_offered,
+            }))
+            .sort((a: any, b: any) => a.name.localeCompare(b.name));
+          return json({ schools });
+        } catch {
+          return json({ error: "Could not load schools right now." }, 502);
+        }
+      }
 
       // ---- Schools ----
       if (path === "/api/schools" && method === "GET") {
@@ -616,10 +629,10 @@ export default {
         // Lightweight context: open tasks + schools so advice is personal.
         const [{ results: openTasks }, { results: schoolRows }] = await Promise.all([
           env.DB.prepare("SELECT title, category, due_date FROM tasks WHERE user_id = ? AND status != 'done' ORDER BY COALESCE(due_date,'9999') ASC LIMIT 25").bind(user.id).all(),
-          env.DB.prepare("SELECT name, platform, app_round, deadline FROM schools WHERE user_id = ? LIMIT 25").bind(user.id).all(),
+          env.DB.prepare("SELECT name, platform, app_round, deadline, notes FROM schools WHERE user_id = ? LIMIT 25").bind(user.id).all(),
         ]);
         const ctx = [
-          schoolRows.length ? "Their schools: " + schoolRows.map((s: any) => `${s.name}${s.app_round ? " (" + s.app_round + ")" : ""}${s.deadline ? " due " + s.deadline : ""}`).join("; ") : "No schools added yet.",
+          schoolRows.length ? "Their schools: " + schoolRows.map((s: any) => `${s.name}${s.notes ? " — " + s.notes : ""}${s.app_round ? " (" + s.app_round + ")" : ""}${s.deadline ? " due " + s.deadline : ""}`).join("; ") : "No schools added yet.",
           openTasks.length ? "Open tasks: " + openTasks.map((t: any) => `${t.title}${t.due_date ? " (due " + t.due_date + ")" : ""}`).join("; ") : "No open tasks yet.",
           `Today is ${new Date().toISOString().slice(0, 10)}.`,
         ].join("\n");
