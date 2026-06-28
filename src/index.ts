@@ -210,18 +210,6 @@ export default {
       if (path === "/api/health") {
         return json({ ok: true, service: "unibreeze", ai: true, ai_provider: env.ANTHROPIC_API_KEY ? "claude" : "workers-ai", time: new Date().toISOString() });
       }
-
-      // -- Temporary AI self-test (token-gated, fixed tiny prompt) --
-      if (path === "/api/ai/selftest" && url.searchParams.get("k") === "ub-selftest-9f3a2") {
-        try {
-          const model = env.WORKERS_AI_MODEL || "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
-          const out = (await env.AI.run(model as any, { messages: [{ role: "user", content: "Reply with exactly: UNIBREEZE_AI_OK" }], max_tokens: 16 })) as any;
-          return json({ ok: true, model, raw: out });
-        } catch (e) {
-          return json({ ok: false, error: String(e instanceof Error ? e.message + " | " + e.stack : e) }, 200);
-        }
-      }
-
       // ---- Auth (public) ----
       if (path === "/api/auth/signup" && method === "POST") {
         const b = (await request.json().catch(() => ({}))) as any;
