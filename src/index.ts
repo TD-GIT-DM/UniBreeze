@@ -315,19 +315,20 @@ export default {
         const q = (url.searchParams.get("q") || "").toLowerCase();
         const out: any = {};
         for (const [name, u] of [
-          ["pss2019", `https://educationdata.urban.org/api/v1/schools/pss/2019/?fips=${fips}`],
-          ["pss2017", `https://educationdata.urban.org/api/v1/schools/pss/2017/?fips=${fips}`],
-          ["pss2015", `https://educationdata.urban.org/api/v1/schools/pss/2015/?fips=${fips}`],
+          ["disc_pss", `https://educationdata.urban.org/api/v1/schools/pss/`],
+          ["disc_schools", `https://educationdata.urban.org/api/v1/schools/`],
+          ["pss_dir_2019", `https://educationdata.urban.org/api/v1/schools/pss/directory/2019/?fips=${fips}`],
         ] as const) {
           try {
             const r = await fetch(u);
             const ct = r.headers.get("content-type") || "";
-            if (!r.ok || !ct.includes("json")) { out[name] = { status: r.status, ct, snip: (await r.text()).slice(0, 120) }; continue; }
-            const d: any = await r.json();
+            const bodyText = await r.text();
+            if (!r.ok || !ct.includes("json")) { out[name] = { status: r.status, ct, snip: bodyText.replace(/\s+/g, " ").slice(0, 400) }; continue; }
+            const d: any = JSON.parse(bodyText);
             const results = d.results || [];
             const nameKey = results[0] ? Object.keys(results[0]).find((k) => k.includes("name")) : null;
             const matches = q && nameKey ? results.filter((x: any) => String(x[nameKey] || "").toLowerCase().includes(q)).slice(0, 5).map((x: any) => x[nameKey]) : [];
-            out[name] = { status: r.status, count: d.count, page_size: results.length, fields: results[0] ? Object.keys(results[0]) : [], sampleNames: results.slice(0, 3).map((x: any) => nameKey ? x[nameKey] : null), matches };
+            out[name] = { status: r.status, count: d.count, page_size: results.length, fields: results[0] ? Object.keys(results[0]) : [], keys: Object.keys(d).slice(0, 20), sampleNames: results.slice(0, 3).map((x: any) => nameKey ? x[nameKey] : null), matches };
           } catch (e) { out[name] = { error: String(e).slice(0, 160) }; }
         }
         return json(out);
