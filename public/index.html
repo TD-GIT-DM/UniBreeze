@@ -177,6 +177,7 @@
           <h2 class="sec" style="margin-top:1.2rem">Document vault</h2>
           <div id="docList"></div>
           <button class="btn ghost sm" style="width:100%; margin-top:.4rem" onclick="openImport()">Upload a document</button>
+          <button class="btn ghost sm" style="width:100%; margin-top:.4rem" onclick="openDrivePicker()">📁 Add from Google Drive</button>
 
           <h2 class="sec" style="margin-top:1.2rem">📚 Canvas</h2>
           <div id="canvasBox"></div>
@@ -477,6 +478,59 @@
   async function parseDoc(id){ openImport(); impTab('file'); $('m_err').textContent='Analyzing saved document…';
     try{ const res=await api('/api/import/parse',{method:'POST',body:JSON.stringify({documentId:id})}); $('m_err').textContent=''; renderProposed(res.tasks||[]); }
     catch(e){ $('m_err').textContent=e.message; } }
+
+  // ---------- google drive picker ----------
+  // Filled in after you create the Google credentials.
+  const GOOGLE_CLIENT_ID = '';
+  const GOOGLE_API_KEY = '';
+  function loadScript(src){ return new Promise((res,rej)=>{ if(document.querySelector(`script[src="${src}"]`)){res();return;} const s=document.createElement('script'); s.src=src; s.onload=res; s.onerror=()=>rej(new Error('script load failed')); document.head.appendChild(s); }); }
+  let _driveToken=null;
+  async function ensureGoogle(){
+    if(!GOOGLE_CLIENT_ID || !GOOGLE_API_KEY) throw new Error('Google Drive isn’t set up yet — credentials still needed.');
+    await loadScript('https://apis.google.com/js/api.js');
+    await new Promise(r=>gapi.load('picker',r));
+    await loadScript('https://accounts.google.com/gsi/client');
+  }
+  function getDriveToken(){
+    return new Promise((resolve,reject)=>{
+      const tc=google.accounts.oauth2.initTokenClient({ client_id:GOOGLE_CLIENT_ID, scope:'https://www.googleapis.com/auth/drive.file',
+        callback:(r)=>{ r.error?reject(new Error(r.error)):resolve(r.access_token); } });
+      tc.requestAccessToken({prompt:''});
+    });
+  }
+  async function openDrivePicker(){
+    try{
+      await ensureGoogle();
+      _driveToken=await getDriveToken();
+      const view=new google.picker.DocsView(google.picker.ViewId.DOCS).setIncludeFolders(true).setSelectFolderEnabled(false);
+      new google.picker.PickerBuilder()
+        .enableFeature(google.picker.Feature.MULTISELECT_ENABLED)
+        .setOAuthToken(_driveToken).setDeveloperKey(GOOGLE_API_KEY)
+        .addView(view).setCallback(pickerCallback).build().setVisible(true);
+    }catch(e){ alert('Google Drive: '+e.message); }
+  }
+  async function pickerCallback(data){
+    if(!google.picker || data.action!==google.picker.Action.PICKED) return;
+    const docs=data.docs||[]; let ok=0;
+    for(const d of docs){ try{ await importDriveFile(d); ok++; }catch(e){ console.error('drive import',d.name,e); } }
+    alert(`Added ${ok} of ${docs.length} file(s) from Google Drive.`);
+    await refresh();
+  }
+  async function importDriveFile(d){
+    let url, filename=d.name||'drive-file';
+    if(d.mimeType && d.mimeType.startsWith('application/vnd.google-apps')){
+      url=`https://www.googleapis.com/drive/v3/files/${d.id}/export?mimeType=application/pdf`;
+      filename=filename.replace(/\.[^.]+$/,'')+'.pdf';
+    } else {
+      url=`https://www.googleapis.com/drive/v3/files/${d.id}?alt=media`;
+    }
+    const r=await fetch(url,{headers:{Authorization:'Bearer '+_driveToken}});
+    if(!r.ok) throw new Error('download failed '+r.status);
+    const blob=await r.blob();
+    const fd=new FormData(); fd.append('file', new File([blob], filename, {type: blob.type||'application/octet-stream'}));
+    const up=await fetch('/api/documents',{method:'POST',body:fd});
+    if(!up.ok) throw new Error('upload failed');
+  }
 
   // ---------- canvas ----------
   async function loadCanvas(){
