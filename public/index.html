@@ -146,6 +146,25 @@
     .accounts { display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:.9rem; margin-bottom:1.4rem; }
     .acct-card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:1rem; }
     .acct-h { font-weight:700; margin-bottom:.5rem; }
+
+    /* Dashboard hero + global search */
+    .dash-hero { text-align:center; padding:1.8rem 0 1.2rem; }
+    .logo-xl { font-size:2.7rem; font-weight:800; letter-spacing:-.03em; }
+    .logo-xl span { color:var(--brand); }
+    .search-wrap { max-width:540px; margin:1.1rem auto 0; position:relative; }
+    .search-wrap input { padding:.8rem 1.1rem; font-size:1.05rem; border-radius:999px; box-shadow:var(--shadow); }
+    .search-results { position:absolute; left:0; right:0; top:calc(100% + .4rem); background:var(--card); border:1px solid var(--line); border-radius:12px; box-shadow:var(--shadow); z-index:8; text-align:left; max-height:320px; overflow-y:auto; }
+    .search-results:empty { display:none; }
+    .sr { padding:.55rem .85rem; cursor:pointer; display:flex; justify-content:space-between; gap:.6rem; align-items:center; }
+    .sr:hover { background:var(--soft); }
+    .sr-cat { font-size:.68rem; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; }
+    /* Compact dashboard body */
+    .dash-body { max-width:980px; margin:0 auto; }
+    .dash-body .ticker { padding:.5rem 0; }
+    .dash-body .tk, .dash-body .tk .tk-name { font-size:.8rem; }
+    .dash-body .acct-card { padding:.85rem; }
+    .dash-body .stat b { font-size:1.3rem; }
+    .dash-body .stats { gap:.6rem; }
   </style>
 </head>
 <body>
@@ -198,18 +217,29 @@
     <main class="wrap">
       <!-- DASHBOARD -->
       <section class="tabpane" id="pane-dashboard">
-        <div class="ticker" id="ticker"></div>
-        <h2 class="sec">Your accounts</h2>
-        <div class="accounts">
-          <div class="acct-card"><div class="acct-h">📚 Canvas</div><div id="canvasBox"></div></div>
-          <div class="acct-card">
-            <div class="acct-h">📁 Google Drive</div>
-            <p class="muted" style="font-size:.85rem; margin:.2rem 0 .6rem">Pull documents straight from your Drive.</p>
-            <button class="btn ghost sm" style="width:100%" onclick="openDrivePicker()">Add from Google Drive</button>
+        <div class="dash-hero">
+          <div class="logo-xl">Uni<span>Breeze</span> 🌬️</div>
+          <div class="search-wrap">
+            <input id="globalSearch" placeholder="Search tasks, schools, documents…" oninput="runSearch()" onfocus="runSearch()" autocomplete="off" />
+            <div class="search-results" id="searchResults"></div>
           </div>
         </div>
-        <h2 class="sec">At a glance</h2>
-        <div class="stats" id="stats"></div>
+        <div class="dash-body">
+          <div class="ticker" id="ticker"></div>
+          <h2 class="sec">Your accounts</h2>
+          <div class="accounts">
+            <div class="acct-card"><div class="acct-h">📚 Canvas</div><div id="canvasBox"></div></div>
+            <div class="acct-card">
+              <div class="acct-h">📁 Google Drive</div>
+              <p class="muted" style="font-size:.85rem; margin:.2rem 0 .6rem">Pull documents straight from your Drive.</p>
+              <button class="btn ghost sm" style="width:100%" onclick="openDrivePicker()">Add from Google Drive</button>
+            </div>
+          </div>
+          <div class="row" style="justify-content:space-between"><h2 class="sec">My schools</h2><button class="btn ghost sm" onclick="openSchool()">+ Add</button></div>
+          <div id="dashSchoolList"></div>
+          <h2 class="sec" style="margin-top:1.1rem">At a glance</h2>
+          <div class="stats" id="stats"></div>
+        </div>
       </section>
 
       <!-- DEADLINES -->
@@ -358,6 +388,14 @@
           <span>${sc.deadline?`<span class="${dueClass(sc.deadline)}">${fmtDate(sc.deadline)}</span>`:''} ${n?`<span class="pill">${n}</span>`:''}</span></div>
         </div>`;}).join('');
 
+    // dashboard mini school list
+    const dsl=$('dashSchoolList');
+    if(dsl) dsl.innerHTML = S.schools.length ? S.schools.map(sc=>`<div class="school" onclick="openSchoolTasks(${sc.id})">
+        <div class="nm">${esc(sc.name)}</div>
+        <div class="meta"><span>${sc.notes?esc(sc.notes).slice(0,60):(sc.platform?esc(sc.platform):'—')}</span>
+        <span>${sc.deadline?`<span class="${dueClass(sc.deadline)}">${fmtDate(sc.deadline)}</span>`:''}</span></div>
+      </div>`).join('') : `<div class="muted" style="font-size:.85rem">No schools yet — click + Add.</div>`;
+
     // docs (vault — small list w/ expand)
     const docs = S.vaultExpanded ? S.docs : S.docs.slice(0,5);
     $('docList').innerHTML = (S.docs.length? '' : `<div class="muted" style="font-size:.85rem">No documents.</div>`) +
@@ -404,6 +442,19 @@
   function setFilter(f){ S.filter=f; [...$('filterSeg').children].forEach(b=>b.classList.toggle('on', b.dataset.f===f)); render(); }
   function toggleSchool(id){ S.activeSchool = S.activeSchool===id?null:id; render(); }
   function toggleVault(){ S.vaultExpanded=!S.vaultExpanded; render(); }
+  function openSchoolTasks(id){ S.activeSchool=id; S.filter='all'; showTab('tasks'); render(); }
+  function runSearch(){
+    const q=$('globalSearch').value.trim().toLowerCase(); const box=$('searchResults');
+    if(!q){ box.innerHTML=''; return; }
+    const res=[];
+    S.tasks.filter(t=>t.title.toLowerCase().includes(q)).slice(0,6).forEach(t=>res.push({cat:'Task', label:t.title, act:`openTaskResult()`}));
+    S.schools.filter(s=>s.name.toLowerCase().includes(q)).slice(0,4).forEach(s=>res.push({cat:'School', label:s.name, act:`openSchoolTasks(${s.id})`}));
+    S.docs.filter(d=>d.filename.toLowerCase().includes(q)).slice(0,4).forEach(d=>res.push({cat:'Document', label:d.filename, act:`window.open('/api/documents/${d.id}/download','_blank')`}));
+    box.innerHTML = res.length ? res.map(r=>`<div class="sr" onclick="${r.act}; clearSearch()"><span>${esc(r.label)}</span><span class="sr-cat">${r.cat}</span></div>`).join('') : `<div class="sr"><span class="muted">No matches</span></div>`;
+  }
+  function clearSearch(){ const s=$('globalSearch'); if(s) s.value=''; const b=$('searchResults'); if(b) b.innerHTML=''; }
+  function openTaskResult(){ S.activeSchool=null; S.filter='all'; showTab('tasks'); render(); }
+  document.addEventListener('click', (e)=>{ if(!e.target.closest('.search-wrap')){ const b=$('searchResults'); if(b) b.innerHTML=''; } });
   function showTab(name){
     S.tab=name;
     ['dashboard','deadlines','tasks','import'].forEach(t=>{ const p=$('pane-'+t); if(p) p.classList.toggle('hidden', t!==name); });
