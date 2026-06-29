@@ -121,6 +121,31 @@
     .chat-suggest button { background:var(--soft); color:var(--brand); border:1px solid var(--line); font-size:.78rem; padding:.3rem .55rem; }
     .chat-input { display:flex; gap:.4rem; padding:.6rem; border-top:1px solid var(--line); }
     .chat-input textarea { min-height:auto; height:42px; }
+
+    /* Tabs */
+    .tabnav { display:flex; gap:.25rem; flex-wrap:wrap; }
+    .tabnav button { background:transparent; color:var(--muted); font-weight:600; padding:.45rem .8rem; border-radius:9px; font-size:.92rem; }
+    .tabnav button.on { background:var(--soft); color:var(--brand); }
+    .tabnav button:hover { color:var(--ink); }
+    .tabpane { padding-top:1.3rem; }
+
+    /* Wall-Street-style deadline ticker */
+    .ticker { overflow:hidden; background:#0a0f1a; border:1px solid #1d2740; border-radius:12px; padding:.6rem 0; margin-bottom:1.4rem; position:relative; }
+    .ticker:before,.ticker:after { content:''; position:absolute; top:0; bottom:0; width:46px; z-index:2; pointer-events:none; }
+    .ticker:before { left:0; background:linear-gradient(90deg,#0a0f1a,transparent); }
+    .ticker:after { right:0; background:linear-gradient(270deg,#0a0f1a,transparent); }
+    .ticker-track { display:inline-flex; align-items:center; gap:1.6rem; white-space:nowrap; will-change:transform; animation:tick 42s linear infinite; }
+    .ticker:hover .ticker-track { animation-play-state:paused; }
+    @keyframes tick { from{transform:translateX(0)} to{transform:translateX(-50%)} }
+    .tk { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:.86rem; color:#e7eefc; display:inline-flex; align-items:center; gap:.45rem; }
+    .tk .tk-name { color:#8fa6c8; text-transform:uppercase; letter-spacing:.02em; font-size:.8rem; }
+    .tk .up { color:#19d27c; } .tk .down { color:#ff5b5b; } .tk .mid { color:#f5b53d; }
+    .tk .dot { color:#33415c; }
+
+    /* Account cards */
+    .accounts { display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:.9rem; margin-bottom:1.4rem; }
+    .acct-card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:1rem; }
+    .acct-h { font-weight:700; margin-bottom:.5rem; }
   </style>
 </head>
 <body>
@@ -155,45 +180,92 @@
   <div id="appView" class="hidden">
     <header class="app">
       <div class="wrap">
-        <div class="logo">Uni<span>Breeze</span> 🌬️</div>
+        <div class="row" style="gap:1.3rem">
+          <div class="logo">Uni<span>Breeze</span> 🌬️</div>
+          <nav class="tabnav" id="tabnav">
+            <button class="on" data-t="dashboard" onclick="showTab('dashboard')">Dashboard</button>
+            <button data-t="deadlines" onclick="showTab('deadlines')">Deadlines</button>
+            <button data-t="tasks" onclick="showTab('tasks')">Tasks</button>
+            <button data-t="import" onclick="showTab('import')">Import</button>
+          </nav>
+        </div>
         <div class="row">
-          <button class="btn ghost sm" onclick="openImport()">+ Import worksheet</button>
           <button class="btn sm" onclick="openTask()">+ Task</button>
           <button class="btn danger sm" onclick="logout()">Log out</button>
         </div>
       </div>
     </header>
     <main class="wrap">
-      <h2 class="sec">Key application deadlines <span class="muted" style="text-transform:none; letter-spacing:0">· typical U.S. milestones — <span style="color:var(--warn)">*</span> dates vary by school, verify each</span></h2>
-      <div class="deadlines" id="deadlines"></div>
-      <div class="stats" id="stats"></div>
-      <div class="grid">
-        <div>
-          <div class="row" style="justify-content:space-between">
-            <h2 class="sec">My schools</h2>
-            <button class="btn ghost sm" onclick="openSchool()">+ Add</button>
+      <!-- DASHBOARD -->
+      <section class="tabpane" id="pane-dashboard">
+        <div class="ticker" id="ticker"></div>
+        <h2 class="sec">Your accounts</h2>
+        <div class="accounts">
+          <div class="acct-card"><div class="acct-h">📚 Canvas</div><div id="canvasBox"></div></div>
+          <div class="acct-card">
+            <div class="acct-h">📁 Google Drive</div>
+            <p class="muted" style="font-size:.85rem; margin:.2rem 0 .6rem">Pull documents straight from your Drive.</p>
+            <button class="btn ghost sm" style="width:100%" onclick="openDrivePicker()">Add from Google Drive</button>
           </div>
-          <div id="schoolList"></div>
-          <h2 class="sec" style="margin-top:1.2rem">Document vault</h2>
-          <div id="docList"></div>
-          <button class="btn ghost sm" style="width:100%; margin-top:.4rem" onclick="openImport()">Upload a document</button>
-          <button class="btn ghost sm" style="width:100%; margin-top:.4rem" onclick="openDrivePicker()">📁 Add from Google Drive</button>
-
-          <h2 class="sec" style="margin-top:1.2rem">📚 Canvas</h2>
-          <div id="canvasBox"></div>
         </div>
-        <div>
-          <div class="toolbar">
-            <strong id="taskHeading" class="grow">All tasks</strong>
-            <div class="seg" id="filterSeg">
-              <button class="on" data-f="open" onclick="setFilter('open')">Open</button>
-              <button data-f="all" onclick="setFilter('all')">All</button>
-              <button data-f="done" onclick="setFilter('done')">Done</button>
+        <h2 class="sec">At a glance</h2>
+        <div class="stats" id="stats"></div>
+      </section>
+
+      <!-- DEADLINES -->
+      <section class="tabpane hidden" id="pane-deadlines">
+        <h2 class="sec">National application deadlines <span class="muted" style="text-transform:none; letter-spacing:0">· typical U.S. milestones — <span style="color:var(--warn)">*</span> vary by school</span></h2>
+        <div class="deadlines" id="deadlines"></div>
+        <h2 class="sec" style="margin-top:1.4rem">Your deadlines</h2>
+        <div id="personalDeadlines"></div>
+      </section>
+
+      <!-- TASKS -->
+      <section class="tabpane hidden" id="pane-tasks">
+        <div class="grid">
+          <div>
+            <div class="row" style="justify-content:space-between">
+              <h2 class="sec">My schools</h2>
+              <button class="btn ghost sm" onclick="openSchool()">+ Add</button>
+            </div>
+            <div id="schoolList"></div>
+          </div>
+          <div>
+            <div class="toolbar">
+              <strong id="taskHeading" class="grow">All tasks</strong>
+              <div class="seg" id="filterSeg">
+                <button class="on" data-f="open" onclick="setFilter('open')">Open</button>
+                <button data-f="all" onclick="setFilter('all')">All</button>
+                <button data-f="done" onclick="setFilter('done')">Done</button>
+              </div>
+            </div>
+            <div id="taskList"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- IMPORT -->
+      <section class="tabpane hidden" id="pane-import">
+        <div class="grid" style="grid-template-columns:1fr 300px">
+          <div>
+            <h2 class="sec">Add documents</h2>
+            <div class="acct-card">
+              <div class="acct-h">📄 Upload or paste</div>
+              <p class="muted" style="font-size:.85rem; margin:.2rem 0 .6rem">Add a file or note, name it, and it becomes a task.</p>
+              <button class="btn sm" style="width:100%" onclick="openImport()">Upload a document / paste text</button>
+            </div>
+            <div class="acct-card" style="margin-top:.8rem">
+              <div class="acct-h">📁 Google Drive</div>
+              <p class="muted" style="font-size:.85rem; margin:.2rem 0 .6rem">Pick files from your Drive (multi-select).</p>
+              <button class="btn sm" style="width:100%" onclick="openDrivePicker()">Add from Google Drive</button>
             </div>
           </div>
-          <div id="taskList"></div>
+          <div>
+            <div class="row" style="justify-content:space-between"><h2 class="sec">Vault</h2><button class="btn ghost sm" id="vaultToggle" onclick="toggleVault()">See all</button></div>
+            <div id="docList"></div>
+          </div>
         </div>
-      </div>
+      </section>
     </main>
 
     <!-- Chat assistant -->
@@ -217,7 +289,7 @@
 
   <script>
   // ---------- state ----------
-  const S = { user:null, schools:[], tasks:[], docs:[], filter:'open', activeSchool:null, authMode:'login' };
+  const S = { user:null, schools:[], tasks:[], docs:[], filter:'open', activeSchool:null, authMode:'login', tab:'dashboard', vaultExpanded:false };
   const $ = (id) => document.getElementById(id);
   const api = async (path, opts={}) => {
     const r = await fetch(path, { headers:{'content-type':'application/json'}, ...opts });
@@ -286,10 +358,14 @@
           <span>${sc.deadline?`<span class="${dueClass(sc.deadline)}">${fmtDate(sc.deadline)}</span>`:''} ${n?`<span class="pill">${n}</span>`:''}</span></div>
         </div>`;}).join('');
 
-    // docs
+    // docs (vault — small list w/ expand)
+    const docs = S.vaultExpanded ? S.docs : S.docs.slice(0,5);
     $('docList').innerHTML = (S.docs.length? '' : `<div class="muted" style="font-size:.85rem">No documents.</div>`) +
-      S.docs.map(d=>`<div class="doc"><span>📄 <a href="/api/documents/${d.id}/download" target="_blank">${esc(d.filename)}</a></span>
+      docs.map(d=>`<div class="doc"><span>📄 <a href="/api/documents/${d.id}/download" target="_blank">${esc(d.filename)}</a></span>
         <button class="btn danger sm" onclick="delDoc(${d.id})">✕</button></div>`).join('');
+    const vt=$('vaultToggle'); if(vt){ vt.style.display = S.docs.length>5?'':'none'; vt.textContent = S.vaultExpanded?'Show less':`See all (${S.docs.length})`; }
+
+    renderDeadlines(); renderTicker(); renderPersonalDeadlines();
 
     // tasks
     let list = S.tasks.slice();
@@ -327,6 +403,12 @@
 
   function setFilter(f){ S.filter=f; [...$('filterSeg').children].forEach(b=>b.classList.toggle('on', b.dataset.f===f)); render(); }
   function toggleSchool(id){ S.activeSchool = S.activeSchool===id?null:id; render(); }
+  function toggleVault(){ S.vaultExpanded=!S.vaultExpanded; render(); }
+  function showTab(name){
+    S.tab=name;
+    ['dashboard','deadlines','tasks','import'].forEach(t=>{ const p=$('pane-'+t); if(p) p.classList.toggle('hidden', t!==name); });
+    [...$('tabnav').children].forEach(b=>b.classList.toggle('on', b.dataset.t===name));
+  }
 
   // ---------- task actions ----------
   async function toggleTask(id){
@@ -637,6 +719,36 @@
     }).join('');
   }
 
+  // Combined deadline data (national + personal) for ticker & "your deadlines".
+  function allDeadlines(){
+    const today=new Date(); today.setHours(0,0,0,0);
+    const items=[];
+    MILESTONES.forEach(ms=>{ const dt=nextOccur(ms.m,ms.d); items.push({name:ms.label, dt, days:Math.round((dt-today)/86400000), kind:'National'}); });
+    S.schools.forEach(s=>{ if(s.deadline){ const dt=new Date(s.deadline+'T00:00:00'); const days=Math.round((dt-today)/86400000); if(days>=0) items.push({name:s.name, dt, days, kind:'School'}); } });
+    S.tasks.forEach(t=>{ if(t.due_date && t.status!=='done'){ const dt=new Date(t.due_date+'T00:00:00'); const days=Math.round((dt-today)/86400000); if(days>=-1) items.push({name:t.title, dt, days, kind:'Task'}); } });
+    return items.sort((a,b)=>a.days-b.days);
+  }
+  function renderTicker(){
+    const el=$('ticker'); if(!el) return;
+    const items=allDeadlines();
+    if(!items.length){ el.innerHTML=`<div class="ticker-track"><span class="tk"><span class="tk-name">No deadlines yet — add a school or task</span></span></div>`; return; }
+    const md=(dt)=>dt.toLocaleDateString(undefined,{month:'short',day:'numeric'});
+    const one=items.map(it=>{
+      const cls=it.days<=14?'down':it.days<=45?'mid':'up'; const arrow=it.days<=14?'▼':'▲';
+      return `<span class="tk"><span class="tk-name">${esc(it.name).slice(0,42)}</span><span class="${cls}">${arrow} ${it.days}d</span><span class="dot">·</span><span class="tk-name">${md(it.dt)}</span></span>`;
+    }).join('<span class="dot">|</span>');
+    el.innerHTML=`<div class="ticker-track">${one}<span class="dot" style="margin:0 .8rem">|</span>${one}</div>`;
+  }
+  function renderPersonalDeadlines(){
+    const el=$('personalDeadlines'); if(!el) return;
+    const items=allDeadlines().filter(i=>i.kind!=='National');
+    el.innerHTML = items.length ? items.map(it=>{
+      const cls=it.days<=14?'d-urgent':it.days<=45?'d-soon':'';
+      return `<div class="doc"><span>${it.kind==='School'?'🏫':'📌'} ${esc(it.name)} <span class="muted">· ${it.kind}</span></span>
+        <span class="${cls}">${it.dt.toLocaleDateString(undefined,{month:'short',day:'numeric'})} · ${it.days}d</span></div>`;
+    }).join('') : `<div class="muted" style="font-size:.85rem">No personal deadlines yet — add a school deadline or a task with a due date.</div>`;
+  }
+
   // ---------- chat assistant ----------
   let chatHistory=[], chatOpen=false, chatBusy=false;
   function toggleChat(){
@@ -674,7 +786,7 @@
   // ---------- boot ----------
   async function boot(){
     const me = await api('/api/auth/me').catch(()=>({user:null}));
-    if(me.user){ S.user=me.user; $('authView').classList.add('hidden'); $('appView').classList.remove('hidden'); renderDeadlines(); setInterval(renderDeadlines, 60000); await refresh(); }
+    if(me.user){ S.user=me.user; $('authView').classList.add('hidden'); $('appView').classList.remove('hidden'); showTab('dashboard'); renderDeadlines(); setInterval(()=>{ renderDeadlines(); renderTicker(); }, 60000); await refresh(); }
     else { $('authView').classList.remove('hidden'); $('appView').classList.add('hidden'); }
   }
   boot();
