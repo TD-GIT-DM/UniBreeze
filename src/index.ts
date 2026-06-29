@@ -616,6 +616,41 @@ export default {
         }
       }
 
+      // ---- Google Drive import (server-side download, then create tasks) ----
+      if (path === "/api/integrations/drive/import" && method === "POST") {
+        const b = (await request.json().catch(() => ({}))) as any;
+        const token = typeof b.token === "string" ? b.token : "";
+        const files: any[] = Array.isArray(b.files) ? b.files : [];
+        if (!token || !files.length) return json({ error: "Missing token or files." }, 400);
+        let added = 0; const errors: string[] = [];
+        for (const f of files.slice(0, 20)) {
+          try {
+            const id = String(f.id || "");
+            const nm = String(f.name || "Drive file");
+            const mt = String(f.mimeType || "");
+            let dlUrl: string, filename = nm, contentType = mt || "application/octet-stream";
+            if (mt.startsWith("application/vnd.google-apps")) {
+              dlUrl = `https://www.googleapis.com/drive/v3/files/${id}/export?mimeType=application/pdf`;
+              filename = nm.replace(/\.[^.]+$/, "") + ".pdf";
+              contentType = "application/pdf";
+            } else {
+              dlUrl = `https://www.googleapis.com/drive/v3/files/${id}?alt=media`;
+            }
+            const r = await fetch(dlUrl, { headers: { Authorization: `Bearer ${token}` } });
+            if (!r.ok) { errors.push(`${nm}: HTTP ${r.status}`); continue; }
+            const buf = await r.arrayBuffer();
+            const key = `u${user.id}/${randomHex(8)}-${filename}`.slice(0, 400);
+            await env.BUCKET.put(key, buf, { httpMetadata: { contentType } });
+            const dres = await env.DB.prepare(
+              "INSERT INTO documents (user_id, r2_key, filename, content_type, size) VALUES (?, ?, ?, ?, ?)",
+            ).bind(user.id, key, filename.slice(0, 240), contentType, buf.byteLength).run();
+            await insertTask(env, user.id, { title: nm, details: "Imported from Google Drive", category: "form", source: "drive", source_url: `/api/documents/${dres.meta.last_row_id}/download` });
+            added++;
+          } catch (e) { errors.push(String(e instanceof Error ? e.message : e).slice(0, 80)); }
+        }
+        return json({ ok: true, added, errors });
+      }
+
       // ---- AI chat assistant (free Workers AI) ----
       if (path === "/api/chat" && method === "POST") {
         const b = (await request.json().catch(() => ({}))) as any;
@@ -665,8 +700,8 @@ async function startSession(env: Env, userId: number): Promise<string> {
 
 async function insertTask(env: Env, userId: number, t: any): Promise<number> {
   const r = await env.DB.prepare(
-    `INSERT INTO tasks (user_id, school_id, title, details, category, due_date, status, priority, tips, source)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO tasks (user_id, school_id, title, details, category, due_date, status, priority, tips, source, source_url)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   )
     .bind(
       userId,
@@ -679,6 +714,7 @@ async function insertTask(env: Env, userId: number, t: any): Promise<number> {
       [1, 2, 3].includes(Number(t.priority)) ? Number(t.priority) : 2,
       t.tips ? String(t.tips).slice(0, 600) : null,
       t.source ? String(t.source).slice(0, 120) : "manual",
+      t.source_url ? String(t.source_url).slice(0, 500) : null,
     )
     .run();
   return Number(r.meta.last_row_id);

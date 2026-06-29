@@ -289,8 +289,7 @@
     // docs
     $('docList').innerHTML = (S.docs.length? '' : `<div class="muted" style="font-size:.85rem">No documents.</div>`) +
       S.docs.map(d=>`<div class="doc"><span>📄 <a href="/api/documents/${d.id}/download" target="_blank">${esc(d.filename)}</a></span>
-        <span class="row"><button class="btn ghost sm" onclick="parseDoc(${d.id})">AI tasks</button>
-        <button class="btn danger sm" onclick="delDoc(${d.id})">✕</button></span></div>`).join('');
+        <button class="btn danger sm" onclick="delDoc(${d.id})">✕</button></div>`).join('');
 
     // tasks
     let list = S.tasks.slice();
@@ -316,7 +315,8 @@
           <span>${catLabel(t.category)}</span>
           ${sc?`<span>🏫 ${esc(sc.name)}</span>`:''}
           ${t.due_date?`<span class="${dueClass(t.due_date)}">📅 ${fmtDate(t.due_date)}</span>`:''}
-          ${t.source==='canvas'?`<span class="pill">📚 Canvas</span>`:t.source && t.source.startsWith('import')?`<span class="muted">imported</span>`:''}
+          ${t.source==='canvas'?`<span class="pill">📚 Canvas</span>`:t.source==='drive'?`<span class="pill">📁 Drive</span>`:''}
+          ${t.source_url?`<a href="${t.source_url}" target="_blank" class="pill" style="text-decoration:none">📎 file</a>`:''}
         </div>
         ${t.details?`<div class="t-details">${esc(t.details)}</div>`:''}
         ${t.tips?`<div class="tip"><b>Tip:</b> ${esc(t.tips)}</div>`:''}
@@ -421,63 +421,46 @@
 
   // ---------- import ----------
   function openImport(){
-    modal(`<h3>Import a worksheet</h3>
-      <p class="muted" style="margin-top:-.4rem">Upload a PDF/image or paste text. Claude pulls out the action items and you pick which to add.</p>
+    modal(`<h3>Add a document or note as a task</h3>
+      <p class="muted" style="margin-top:-.4rem">Upload a file or paste text, give it a name, and it becomes a task on your checklist.</p>
       <div class="seg" style="margin-bottom:.6rem">
         <button id="imTabFile" class="on" onclick="impTab('file')">Upload file</button>
         <button id="imTabText" onclick="impTab('text')">Paste text</button>
       </div>
       <div id="imFile"><label>File (PDF, image, or text — 15MB max)</label><input id="m_file" type="file" accept=".pdf,.png,.jpg,.jpeg,.webp,.txt,.md" /></div>
-      <div id="imText" class="hidden"><label>Paste the assignment / instructions</label><textarea id="m_text" style="min-height:140px"></textarea></div>
-      <label>Assign extracted tasks to (optional)</label><select id="m_impSchool">${schoolOptions(S.activeSchool)}</select>
+      <div id="imText" class="hidden"><label>Paste your note / instructions</label><textarea id="m_text" style="min-height:120px"></textarea></div>
+      <label>Task name</label><input id="m_taskname" placeholder="e.g. Finish college essay worksheet" />
+      <div class="row"><div class="grow"><label>School (optional)</label><select id="m_impSchool">${schoolOptions(S.activeSchool)}</select></div>
+      <div class="grow"><label>Due date (optional)</label><input id="m_impDue" type="date" /></div></div>
       <div class="err" id="m_err"></div>
-      <div id="m_proposed"></div>
       <div class="row" style="justify-content:flex-end; margin-top:1rem">
         <button class="btn ghost" onclick="closeModal()">Cancel</button>
-        <button class="btn" id="m_go" onclick="runImport()">Analyze with AI</button>
+        <button class="btn" id="m_go" onclick="addUploadTask()">Add task</button>
       </div>`);
   }
   let impMode='file';
   function impTab(m){ impMode=m; $('imTabFile').classList.toggle('on',m==='file'); $('imTabText').classList.toggle('on',m==='text');
     $('imFile').classList.toggle('hidden',m!=='file'); $('imText').classList.toggle('hidden',m!=='text'); }
 
-  async function runImport(){
-    $('m_err').textContent=''; const go=$('m_go'); go.disabled=true; go.innerHTML='<span class="spin"></span> Analyzing…';
+  async function addUploadTask(){
+    $('m_err').textContent=''; const name=$('m_taskname').value.trim();
+    if(!name){ $('m_err').textContent='Give the task a name first.'; return; }
+    const go=$('m_go'); go.disabled=true; go.innerHTML='<span class="spin"></span> Adding…';
     try{
-      let docId=null, text=null;
+      const task={ title:name, school_id:Number($('m_impSchool').value)||null, due_date:$('m_impDue').value||null, category:'form' };
       if(impMode==='file'){
-        const f=$('m_file').files[0]; if(!f){ throw new Error('Choose a file first.'); }
+        const f=$('m_file').files[0]; if(!f) throw new Error('Choose a file first.');
         const fd=new FormData(); fd.append('file',f);
-        const up=await fetch('/api/documents',{method:'POST',body:fd}); const ud=await up.json(); if(!up.ok) throw new Error(ud.error||'Upload failed'); docId=ud.id;
+        const up=await fetch('/api/documents',{method:'POST',body:fd}); const ud=await up.json(); if(!up.ok) throw new Error(ud.error||'Upload failed');
+        task.details='Attached file: '+f.name; task.source='upload'; task.source_url='/api/documents/'+ud.id+'/download';
       } else {
-        text=$('m_text').value.trim(); if(!text) throw new Error('Paste some text first.');
+        const text=$('m_text').value.trim(); if(!text) throw new Error('Paste some text first.');
+        task.details=text; task.source='note';
       }
-      const res=await api('/api/import/parse',{method:'POST',body:JSON.stringify(docId?{documentId:docId}:{text})});
-      renderProposed(res.tasks||[]);
-    }catch(e){ $('m_err').textContent=e.message; }
-    finally{ go.disabled=false; go.textContent='Analyze with AI'; }
+      await api('/api/tasks',{method:'POST',body:JSON.stringify(task)});
+      closeModal(); await refresh();
+    }catch(e){ $('m_err').textContent=e.message; go.disabled=false; go.textContent='Add task'; }
   }
-  let proposed=[];
-  function renderProposed(tasks){
-    proposed=tasks;
-    if(!tasks.length){ $('m_proposed').innerHTML=`<div class="muted" style="margin-top:.6rem">No action items found.</div>`; return; }
-    $('m_proposed').innerHTML = `<h4 style="margin:1rem 0 .5rem">Found ${tasks.length} task${tasks.length>1?'s':''} — uncheck any to skip:</h4>`+
-      tasks.map((t,i)=>`<div class="proposed"><label class="row" style="align-items:flex-start; margin:0">
-        <input type="checkbox" data-i="${i}" checked style="width:auto; margin-top:.2rem" />
-        <span class="grow"><b>${esc(t.title)}</b>
-        <div class="t-meta">${catLabel(t.category)} ${t.due_date?'· 📅 '+fmtDate(t.due_date):''} ${t.priority===1?'· High':''}</div>
-        ${t.tips?`<div class="tip"><b>Tip:</b> ${esc(t.tips)}</div>`:''}</span></label></div>`).join('')+
-      `<button class="btn" style="width:100%" onclick="addProposed()">Add selected to my checklist</button>`;
-  }
-  async function addProposed(){
-    const picks=[...document.querySelectorAll('#m_proposed input[type=checkbox]')].filter(c=>c.checked).map(c=>proposed[Number(c.dataset.i)]);
-    if(!picks.length){ closeModal(); return; }
-    await api('/api/tasks/bulk',{method:'POST',body:JSON.stringify({tasks:picks, school_id:Number($('m_impSchool').value)||null, source:'import'})});
-    closeModal(); await refresh();
-  }
-  async function parseDoc(id){ openImport(); impTab('file'); $('m_err').textContent='Analyzing saved document…';
-    try{ const res=await api('/api/import/parse',{method:'POST',body:JSON.stringify({documentId:id})}); $('m_err').textContent=''; renderProposed(res.tasks||[]); }
-    catch(e){ $('m_err').textContent=e.message; } }
 
   // ---------- google drive picker ----------
   // Filled in after you create the Google credentials.
@@ -511,25 +494,14 @@
   }
   async function pickerCallback(data){
     if(!google.picker || data.action!==google.picker.Action.PICKED) return;
-    const docs=data.docs||[]; let ok=0;
-    for(const d of docs){ try{ await importDriveFile(d); ok++; }catch(e){ console.error('drive import',d.name,e); } }
-    alert(`Added ${ok} of ${docs.length} file(s) from Google Drive.`);
-    await refresh();
-  }
-  async function importDriveFile(d){
-    let url, filename=d.name||'drive-file';
-    if(d.mimeType && d.mimeType.startsWith('application/vnd.google-apps')){
-      url=`https://www.googleapis.com/drive/v3/files/${d.id}/export?mimeType=application/pdf`;
-      filename=filename.replace(/\.[^.]+$/,'')+'.pdf';
-    } else {
-      url=`https://www.googleapis.com/drive/v3/files/${d.id}?alt=media`;
-    }
-    const r=await fetch(url,{headers:{Authorization:'Bearer '+_driveToken}});
-    if(!r.ok) throw new Error('download failed '+r.status);
-    const blob=await r.blob();
-    const fd=new FormData(); fd.append('file', new File([blob], filename, {type: blob.type||'application/octet-stream'}));
-    const up=await fetch('/api/documents',{method:'POST',body:fd});
-    if(!up.ok) throw new Error('upload failed');
+    const docs=(data.docs||[]).map(d=>({id:d.id, name:d.name, mimeType:d.mimeType}));
+    if(!docs.length) return;
+    try{
+      const r=await api('/api/integrations/drive/import',{method:'POST',body:JSON.stringify({token:_driveToken, files:docs})});
+      await refresh();
+      if(r.added===docs.length) alert(`Added ${r.added} file${r.added===1?'':'s'} from Google Drive as task${r.added===1?'':'s'}.`);
+      else alert(`Added ${r.added} of ${docs.length}.`+((r.errors&&r.errors.length)?`\nIssues: ${r.errors.join('; ')}`:''));
+    }catch(e){ alert('Drive import failed: '+e.message); }
   }
 
   // ---------- canvas ----------
