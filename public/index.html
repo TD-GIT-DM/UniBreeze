@@ -443,10 +443,24 @@
   function toggleSchool(id){ S.activeSchool = S.activeSchool===id?null:id; render(); }
   function toggleVault(){ S.vaultExpanded=!S.vaultExpanded; render(); }
   function openSchoolTasks(id){ S.activeSchool=id; S.filter='all'; showTab('tasks'); render(); }
+  const NAV=[
+    {label:'Dashboard', kw:'dashboard home overview start', act:"showTab('dashboard')"},
+    {label:'Deadlines', kw:'deadlines dates due calendar countdown national', act:"showTab('deadlines')"},
+    {label:'Tasks', kw:'tasks todo checklist assignments to-do', act:"showTab('tasks')"},
+    {label:'Import', kw:'import upload documents drive vault file worksheet', act:"showTab('import')"},
+  ];
+  const ACTIONS=[
+    {label:'Add a school', kw:'add school college high', act:'openSchool()'},
+    {label:'Add a task', kw:'add task new create', act:'openTask()'},
+    {label:'Connect Canvas', kw:'canvas connect sync assignments', act:'openCanvas()'},
+    {label:'Add from Google Drive', kw:'google drive upload document', act:'openDrivePicker()'},
+  ];
   function runSearch(){
     const q=$('globalSearch').value.trim().toLowerCase(); const box=$('searchResults');
     if(!q){ box.innerHTML=''; return; }
     const res=[];
+    NAV.filter(n=>n.label.toLowerCase().includes(q)||n.kw.includes(q)).forEach(n=>res.push({cat:'Page', label:'Go to '+n.label, act:n.act}));
+    ACTIONS.filter(a=>a.label.toLowerCase().includes(q)||a.kw.includes(q)).slice(0,3).forEach(a=>res.push({cat:'Action', label:a.label, act:a.act}));
     S.tasks.filter(t=>t.title.toLowerCase().includes(q)).slice(0,6).forEach(t=>res.push({cat:'Task', label:t.title, act:`openTaskResult()`}));
     S.schools.filter(s=>s.name.toLowerCase().includes(q)).slice(0,4).forEach(s=>res.push({cat:'School', label:s.name, act:`openSchoolTasks(${s.id})`}));
     S.docs.filter(d=>d.filename.toLowerCase().includes(q)).slice(0,4).forEach(d=>res.push({cat:'Document', label:d.filename, act:`window.open('/api/documents/${d.id}/download','_blank')`}));
