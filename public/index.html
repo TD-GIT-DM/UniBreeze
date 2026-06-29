@@ -466,6 +466,7 @@
   // Filled in after you create the Google credentials.
   const GOOGLE_CLIENT_ID = '766570023862-284p52vereh9b89ese52ecgmcaa38r6t.apps.googleusercontent.com';
   const GOOGLE_API_KEY = 'AIzaSyB42HFJTss_xCjDF5eu2tO3wCBDGbBkWcY';
+  const GOOGLE_APP_ID = '766570023862';
   function loadScript(src){ return new Promise((res,rej)=>{ if(document.querySelector(`script[src="${src}"]`)){res();return;} const s=document.createElement('script'); s.src=src; s.onload=res; s.onerror=()=>rej(new Error('script load failed')); document.head.appendChild(s); }); }
   let _driveToken=null;
   async function ensureGoogle(){
@@ -488,6 +489,7 @@
       const view=new google.picker.DocsView(google.picker.ViewId.DOCS).setIncludeFolders(true).setSelectFolderEnabled(false);
       new google.picker.PickerBuilder()
         .enableFeature(google.picker.Feature.MULTISELECT_ENABLED)
+        .setAppId(GOOGLE_APP_ID)
         .setOAuthToken(_driveToken).setDeveloperKey(GOOGLE_API_KEY)
         .addView(view).setCallback(pickerCallback).build().setVisible(true);
     }catch(e){ alert('Google Drive: '+e.message); }
