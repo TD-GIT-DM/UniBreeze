@@ -150,12 +150,15 @@
     .acct-card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:1rem; }
     .acct-h { font-weight:700; margin-bottom:.5rem; }
 
+    /* Swift-check brand mark (replaces the wind emoji) */
+    .ub-mark { width:1.02em; height:.8em; vertical-align:-.04em; color:var(--brand); margin-left:.14em; }
+
     /* Dashboard hero + global search */
-    .dash-hero { text-align:center; padding:1.8rem 0 1.2rem; }
-    .logo-xl { font-size:2.7rem; font-weight:800; letter-spacing:-.03em; }
+    .dash-hero { text-align:center; padding:3rem 0 1.6rem; }
+    .logo-xl { font-size:4.4rem; font-weight:800; letter-spacing:-.035em; line-height:1.05; }
     .logo-xl span { color:var(--brand); }
-    .search-wrap { max-width:540px; margin:1.1rem auto 0; position:relative; }
-    .search-wrap input { padding:.8rem 1.1rem; font-size:1.05rem; border-radius:999px; box-shadow:var(--shadow); }
+    .search-wrap { max-width:640px; margin:1.7rem auto 0; position:relative; }
+    .search-wrap input { padding:1rem 1.4rem; font-size:1.25rem; border-radius:999px; box-shadow:var(--shadow); }
     .search-results { position:absolute; left:0; right:0; top:calc(100% + .4rem); background:var(--card); border:1px solid var(--line); border-radius:12px; box-shadow:var(--shadow); z-index:8; text-align:left; max-height:320px; overflow-y:auto; }
     .search-results:empty { display:none; }
     .sr { padding:.55rem .85rem; cursor:pointer; display:flex; justify-content:space-between; gap:.6rem; align-items:center; }
@@ -175,7 +178,7 @@
   <div id="authView" class="auth">
     <div class="card">
       <div class="hero">
-        <div class="logo">Uni<span>Breeze</span> 🌬️</div>
+        <div class="logo">Uni<span>Breeze</span><svg class="ub-mark" viewBox="0 0 36 28" aria-hidden="true"><g stroke="currentColor" stroke-linecap="round" stroke-width="2.4"><line x1="1" y1="9" x2="11" y2="9"/><line x1="3" y1="15" x2="12" y2="15" stroke-opacity=".7"/><line x1="1" y1="21" x2="9" y2="21" stroke-opacity=".45"/></g><path d="M14 15l5 6 12-16" fill="none" stroke="currentColor" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
         <h1>Your college process, simplified.</h1>
         <p>One checklist for every school. Drop in a counselor worksheet and AI turns it into tracked to-dos.</p>
       </div>
@@ -203,7 +206,7 @@
     <header class="app">
       <div class="wrap">
         <div class="row" style="gap:1.3rem">
-          <div class="logo">Uni<span>Breeze</span> 🌬️</div>
+          <div class="logo">Uni<span>Breeze</span><svg class="ub-mark" viewBox="0 0 36 28" aria-hidden="true"><g stroke="currentColor" stroke-linecap="round" stroke-width="2.4"><line x1="1" y1="9" x2="11" y2="9"/><line x1="3" y1="15" x2="12" y2="15" stroke-opacity=".7"/><line x1="1" y1="21" x2="9" y2="21" stroke-opacity=".45"/></g><path d="M14 15l5 6 12-16" fill="none" stroke="currentColor" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
           <nav class="tabnav" id="tabnav">
             <button class="on" data-t="dashboard" onclick="showTab('dashboard')">Dashboard</button>
             <button data-t="deadlines" onclick="showTab('deadlines')">Deadlines</button>
@@ -221,7 +224,7 @@
       <!-- DASHBOARD -->
       <section class="tabpane" id="pane-dashboard">
         <div class="dash-hero">
-          <div class="logo-xl">Uni<span>Breeze</span> 🌬️</div>
+          <div class="logo-xl">Uni<span>Breeze</span><svg class="ub-mark" viewBox="0 0 36 28" aria-hidden="true"><g stroke="currentColor" stroke-linecap="round" stroke-width="2.4"><line x1="1" y1="9" x2="11" y2="9"/><line x1="3" y1="15" x2="12" y2="15" stroke-opacity=".7"/><line x1="1" y1="21" x2="9" y2="21" stroke-opacity=".45"/></g><path d="M14 15l5 6 12-16" fill="none" stroke="currentColor" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
           <div class="search-wrap">
             <input id="globalSearch" placeholder="Search tasks, schools, documents…" oninput="runSearch()" onfocus="runSearch()" autocomplete="off" />
             <div class="search-results" id="searchResults"></div>
@@ -304,7 +307,7 @@
     <!-- Chat assistant -->
     <button id="chatFab" class="chat-fab" onclick="toggleChat()">💬 Ask UniBreeze</button>
     <div id="chatPanel" class="chat-panel hidden">
-      <div class="chat-head"><span>🌬️ UniBreeze Assistant</span><button class="btn ghost sm" onclick="toggleChat()">✕</button></div>
+      <div class="chat-head"><span><svg class="ub-mark" viewBox="0 0 36 28" aria-hidden="true"><g stroke="currentColor" stroke-linecap="round" stroke-width="2.4"><line x1="1" y1="9" x2="11" y2="9"/><line x1="3" y1="15" x2="12" y2="15" stroke-opacity=".7"/><line x1="1" y1="21" x2="9" y2="21" stroke-opacity=".45"/></g><path d="M14 15l5 6 12-16" fill="none" stroke="currentColor" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/></svg> UniBreeze Assistant</span><button class="btn ghost sm" onclick="toggleChat()">✕</button></div>
       <div id="chatMsgs" class="chat-msgs"></div>
       <div class="chat-suggest" id="chatSuggest">
         <button onclick="quickChat('What should I work on next?')">What's next?</button>
@@ -824,7 +827,7 @@
     $('chatPanel').classList.toggle('hidden',!chatOpen);
     $('chatFab').classList.toggle('hidden',chatOpen);
     if(chatOpen && !$('chatMsgs').children.length)
-      pushMsg('bot',"Hi! I'm your college assistant 🌬️ Ask me about essays, UC PIQs, deadlines, or what to tackle next — I can see your schools and tasks.");
+      pushMsg('bot',"Hi! I'm your college assistant. Ask me about essays, UC PIQs, deadlines, or what to tackle next — I can see your schools and tasks.");
     if(chatOpen) $('chatInput').focus();
   }
   function pushMsg(role,content){
