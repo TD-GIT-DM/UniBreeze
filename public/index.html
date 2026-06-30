@@ -629,7 +629,7 @@
     return new Promise((resolve,reject)=>{
       const tc=google.accounts.oauth2.initTokenClient({ client_id:GOOGLE_CLIENT_ID, scope:'https://www.googleapis.com/auth/drive.file',
         callback:(r)=>{ r.error?reject(new Error(r.error)):resolve(r.access_token); } });
-      tc.requestAccessToken({prompt:''});
+      tc.requestAccessToken({prompt:'select_account'});
     });
   }
   async function openDrivePicker(){
